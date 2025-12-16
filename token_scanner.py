@@ -76,7 +76,7 @@ class SafetyCheck:
     weight: float
     details: Dict[str, Any] = field(default_factory=dict)
     timestamp: datetime = field(default_factory=datetime.utcnow)
-    
+
     @property
     def score_contribution(self) -> float:
         if self.status == CheckStatus.PASSED:
@@ -84,10 +84,10 @@ class SafetyCheck:
         elif self.status == CheckStatus.WARNING:
             return self.weight * 0.5
         return 0.0
-    
+
     @property
     def is_critical_failure(self) -> bool:
-        return (self.status == CheckStatus.FAILED and 
+        return (self.status == CheckStatus.FAILED and
                 self.name in ["mint_authority", "honeypot", "confirmed_scam"])
 
 @dataclass
@@ -104,13 +104,13 @@ class TokenSafetyReport:
     timestamp: datetime = field(default_factory=datetime.utcnow)
     scan_duration_ms: float = 0.0
     data_sources_used: List[str] = field(default_factory=list)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "mint": self.mint,
             "risk_score": self.risk_score,
             "risk_level": self.risk_level.value,
-            "checks": {name: {"status": c.status.value, "value": c.value, 
+            "checks": {name: {"status": c.status.value, "value": c.value,
                              "message": c.message, "weight": c.weight}
                       for name, c in self.checks.items()},
             "flags": self.flags,
@@ -130,7 +130,7 @@ class TokenAlert:
     data: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
-@dataclass 
+@dataclass
 class HolderInfo:
     address: str
     balance: float
@@ -150,21 +150,21 @@ class LiquidityInfo:
     lock_percentage: float
 
 class SolanaRPCClient:
-    
+
     def __init__(self, endpoint: str, rate_limit: int = 10):
         self.endpoint = endpoint
         self.rate_limit = rate_limit
         self._semaphore = asyncio.Semaphore(rate_limit)
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _ensure_session(self):
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def _rpc_call(self, method: str, params: List[Any]) -> Optional[Dict]:
         async with self._semaphore:
             await self._ensure_session()
@@ -182,48 +182,48 @@ class SolanaRPCClient:
             except Exception as e:
                 logger.error(f"RPC error: {e}")
                 return None
-    
+
     async def get_account_info(self, address: str) -> Optional[Dict]:
         return await self._rpc_call("getAccountInfo", [address, {"encoding": "jsonParsed"}])
-    
+
     async def get_mint_info(self, mint: str) -> Optional[Dict]:
         result = await self.get_account_info(mint)
         if result and result.get("value"):
             return result["value"].get("data", {}).get("parsed", {}).get("info", {})
         return None
-    
+
     async def get_token_supply(self, mint: str) -> Optional[Dict]:
         return await self._rpc_call("getTokenSupply", [mint])
-    
+
     async def get_token_largest_accounts(self, mint: str) -> Optional[List[Dict]]:
         result = await self._rpc_call("getTokenLargestAccounts", [mint])
         if result and result.get("value"):
             return result["value"]
         return None
-    
+
     async def get_signatures_for_address(self, address: str, limit: int = 10) -> Optional[List[Dict]]:
         return await self._rpc_call("getSignaturesForAddress", [address, {"limit": limit}])
 
 class BirdeyeClient:
-    
+
     BASE_URL = "https://public-api.birdeye.so"
-    
+
     def __init__(self, api_key: str, rate_limit: int = 5):
         self.api_key = api_key
         self.rate_limit = rate_limit
         self._semaphore = asyncio.Semaphore(rate_limit)
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _ensure_session(self):
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
                 headers={"X-API-KEY": self.api_key, "x-chain": "solana"}
             )
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def _get(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         async with self._semaphore:
             await self._ensure_session()
@@ -238,40 +238,40 @@ class BirdeyeClient:
             except Exception as e:
                 logger.error(f"Birdeye error: {e}")
                 return None
-    
+
     async def get_token_overview(self, mint: str) -> Optional[Dict]:
         result = await self._get("/defi/token_overview", {"address": mint})
         return result.get("data") if result else None
-    
+
     async def get_token_security(self, mint: str) -> Optional[Dict]:
         result = await self._get("/defi/token_security", {"address": mint})
         return result.get("data") if result else None
-    
+
     async def get_token_holders(self, mint: str, limit: int = 20) -> Optional[List]:
         result = await self._get("/defi/token_holder", {"address": mint, "offset": 0, "limit": limit})
         return result.get("data", {}).get("items") if result else None
-    
+
     async def get_token_creation_info(self, mint: str) -> Optional[Dict]:
         result = await self._get("/defi/token_creation_info", {"address": mint})
         return result.get("data") if result else None
 
 class DexScreenerClient:
-    
+
     BASE_URL = "https://api.dexscreener.com/latest"
-    
+
     def __init__(self, rate_limit: int = 5):
         self.rate_limit = rate_limit
         self._semaphore = asyncio.Semaphore(rate_limit)
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _ensure_session(self):
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def _get(self, endpoint: str) -> Optional[Dict]:
         async with self._semaphore:
             await self._ensure_session()
@@ -286,11 +286,11 @@ class DexScreenerClient:
             except Exception as e:
                 logger.error(f"DexScreener error: {e}")
                 return None
-    
+
     async def get_token_pairs(self, mint: str) -> Optional[List[Dict]]:
         result = await self._get(f"/dex/tokens/{mint}")
         return result.get("pairs") if result else None
-    
+
     async def get_pair_info(self, pair_address: str) -> Optional[Dict]:
         result = await self._get(f"/dex/pairs/solana/{pair_address}")
         if result and result.get("pairs"):
@@ -298,22 +298,22 @@ class DexScreenerClient:
         return None
 
 class RugCheckClient:
-    
+
     BASE_URL = "https://api.rugcheck.xyz/v1"
-    
+
     def __init__(self, rate_limit: int = 3):
         self.rate_limit = rate_limit
         self._semaphore = asyncio.Semaphore(rate_limit)
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _ensure_session(self):
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def _get(self, endpoint: str) -> Optional[Dict]:
         async with self._semaphore:
             await self._ensure_session()
@@ -328,31 +328,31 @@ class RugCheckClient:
             except Exception as e:
                 logger.error(f"RugCheck error: {e}")
                 return None
-    
+
     async def get_token_report(self, mint: str) -> Optional[Dict]:
         return await self._get(f"/tokens/{mint}/report")
-    
+
     async def get_token_summary(self, mint: str) -> Optional[Dict]:
         return await self._get(f"/tokens/{mint}/report/summary")
 
 class HeliusClient:
-    
+
     BASE_URL = "https://api.helius.xyz/v0"
-    
+
     def __init__(self, api_key: str, rate_limit: int = 10):
         self.api_key = api_key
         self.rate_limit = rate_limit
         self._semaphore = asyncio.Semaphore(rate_limit)
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _ensure_session(self):
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def _get(self, endpoint: str, params: Dict = None) -> Optional[Dict]:
         async with self._semaphore:
             await self._ensure_session()
@@ -369,7 +369,7 @@ class HeliusClient:
             except Exception as e:
                 logger.error(f"Helius error: {e}")
                 return None
-    
+
     async def _post(self, endpoint: str, data: Dict) -> Optional[Dict]:
         async with self._semaphore:
             await self._ensure_session()
@@ -384,7 +384,7 @@ class HeliusClient:
             except Exception as e:
                 logger.error(f"Helius error: {e}")
                 return None
-    
+
     async def get_token_metadata(self, mint: str) -> Optional[Dict]:
         result = await self._post("/token-metadata", {"mintAccounts": [mint]})
         if result and len(result) > 0:
@@ -392,15 +392,15 @@ class HeliusClient:
         return None
 
 class TokenCache:
-    
+
     def __init__(self, default_ttl: int = 60):
         self.default_ttl = default_ttl
         self._cache: Dict[str, Tuple[Any, datetime]] = {}
         self._lock = asyncio.Lock()
-    
+
     def _make_key(self, category: str, identifier: str) -> str:
         return f"{category}:{identifier}"
-    
+
     async def get(self, category: str, identifier: str) -> Optional[Any]:
         key = self._make_key(category, identifier)
         async with self._lock:
@@ -410,25 +410,25 @@ class TokenCache:
                     return value
                 del self._cache[key]
             return None
-    
+
     async def set(self, category: str, identifier: str, value: Any, ttl: Optional[int] = None):
         key = self._make_key(category, identifier)
         ttl = ttl or self.default_ttl
         expiry = datetime.utcnow() + timedelta(seconds=ttl)
         async with self._lock:
             self._cache[key] = (value, expiry)
-    
+
     async def invalidate(self, category: str, identifier: str):
         key = self._make_key(category, identifier)
         async with self._lock:
             self._cache.pop(key, None)
-    
+
     async def clear(self):
         async with self._lock:
             self._cache.clear()
 
 class TokenScanner:
-    
+
     def __init__(
         self,
         rpc_endpoint: str,
@@ -442,25 +442,25 @@ class TokenScanner:
         self.min_liquidity_usd = min_liquidity_usd
         self.max_holder_concentration = max_holder_concentration
         self.min_token_age_minutes = min_token_age_minutes
-        
+
         self.rpc = SolanaRPCClient(rpc_endpoint)
         self.birdeye = BirdeyeClient(birdeye_api_key) if birdeye_api_key else None
         self.helius = HeliusClient(helius_api_key) if helius_api_key else None
         self.dexscreener = DexScreenerClient()
         self.rugcheck = RugCheckClient()
-        
+
         self.cache = TokenCache(default_ttl=cache_ttl)
-        
+
         self.whitelist: Set[str] = set(KNOWN_SAFE_TOKENS)
         self.blacklist: Set[str] = set(KNOWN_SCAM_TOKENS)
         self.user_whitelist: Set[str] = set()
         self.user_blacklist: Set[str] = set()
-        
+
         self._monitors: Dict[str, asyncio.Task] = {}
         self._alert_callbacks: Dict[str, List[Callable]] = defaultdict(list)
-        
+
         logger.info("TokenScanner initialized")
-    
+
     async def close(self):
         await self.rpc.close()
         await self.dexscreener.close()
@@ -472,31 +472,31 @@ class TokenScanner:
         for task in self._monitors.values():
             task.cancel()
         logger.info("TokenScanner closed")
-    
+
     def add_to_whitelist(self, mint: str):
         self.user_whitelist.add(mint)
-    
+
     def remove_from_whitelist(self, mint: str):
         self.user_whitelist.discard(mint)
-    
+
     def add_to_blacklist(self, mint: str):
         self.user_blacklist.add(mint)
-    
+
     def remove_from_blacklist(self, mint: str):
         self.user_blacklist.discard(mint)
-    
+
     def is_whitelisted(self, mint: str) -> bool:
         return mint in self.whitelist or mint in self.user_whitelist
-    
+
     def is_blacklisted(self, mint: str) -> bool:
         return mint in self.blacklist or mint in self.user_blacklist
-    
+
     async def check_mint_authority(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("mint_authority", mint)
             if cached is not None:
                 return cached
-            
+
             mint_info = await self.rpc.get_mint_info(mint)
             if mint_info is None:
                 return SafetyCheck(
@@ -504,7 +504,7 @@ class TokenScanner:
                     value=None, message="Could not fetch mint info",
                     weight=CHECK_WEIGHTS["mint_authority"]
                 )
-            
+
             mint_authority = mint_info.get("mintAuthority")
             if mint_authority is None:
                 result = SafetyCheck(
@@ -521,7 +521,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["mint_authority"],
                     details={"revoked": False, "authority": mint_authority}
                 )
-            
+
             await self.cache.set("mint_authority", mint, result, ttl=300)
             return result
         except Exception as e:
@@ -531,13 +531,13 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["mint_authority"]
             )
-    
+
     async def check_freeze_authority(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("freeze_authority", mint)
             if cached is not None:
                 return cached
-            
+
             mint_info = await self.rpc.get_mint_info(mint)
             if mint_info is None:
                 return SafetyCheck(
@@ -545,7 +545,7 @@ class TokenScanner:
                     value=None, message="Could not fetch mint info",
                     weight=CHECK_WEIGHTS["freeze_authority"]
                 )
-            
+
             freeze_authority = mint_info.get("freezeAuthority")
             if freeze_authority is None:
                 result = SafetyCheck(
@@ -562,7 +562,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["freeze_authority"],
                     details={"revoked": False, "authority": freeze_authority}
                 )
-            
+
             await self.cache.set("freeze_authority", mint, result, ttl=300)
             return result
         except Exception as e:
@@ -572,18 +572,18 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["freeze_authority"]
             )
-    
+
     async def check_lp_lock(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("lp_lock", mint)
             if cached is not None:
                 return cached
-            
+
             rugcheck_report = await self.rugcheck.get_token_report(mint)
             if rugcheck_report:
                 lp_locked = rugcheck_report.get("lpLocked", False)
                 lock_percentage = rugcheck_report.get("lpLockedPct", 0)
-                
+
                 if lp_locked and lock_percentage >= 80:
                     result = SafetyCheck(
                         name="lp_locked", status=CheckStatus.PASSED,
@@ -614,7 +614,7 @@ class TokenScanner:
                     value=None, message="Could not verify LP lock status",
                     weight=CHECK_WEIGHTS["lp_locked"]
                 )
-            
+
             await self.cache.set("lp_lock", mint, result, ttl=120)
             return result
         except Exception as e:
@@ -624,13 +624,13 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["lp_locked"]
             )
-    
+
     async def check_holder_concentration(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("holder_concentration", mint)
             if cached is not None:
                 return cached
-            
+
             top_holders = await self.rpc.get_token_largest_accounts(mint)
             if not top_holders:
                 return SafetyCheck(
@@ -638,7 +638,7 @@ class TokenScanner:
                     value=None, message="Could not fetch holder data",
                     weight=CHECK_WEIGHTS["holder_concentration"]
                 )
-            
+
             supply_info = await self.rpc.get_token_supply(mint)
             if not supply_info:
                 return SafetyCheck(
@@ -646,7 +646,7 @@ class TokenScanner:
                     value=None, message="Could not fetch supply data",
                     weight=CHECK_WEIGHTS["holder_concentration"]
                 )
-            
+
             total_supply = float(supply_info.get("value", {}).get("uiAmount", 0))
             if total_supply == 0:
                 return SafetyCheck(
@@ -654,10 +654,10 @@ class TokenScanner:
                     value=None, message="Zero supply detected",
                     weight=CHECK_WEIGHTS["holder_concentration"]
                 )
-            
+
             top_10_amount = sum(float(h.get("uiAmount", 0)) for h in top_holders[:10])
             concentration = (top_10_amount / total_supply) * 100
-            
+
             if concentration <= self.max_holder_concentration:
                 result = SafetyCheck(
                     name="holder_concentration", status=CheckStatus.PASSED,
@@ -682,7 +682,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["holder_concentration"],
                     details={"top_10_percentage": concentration}
                 )
-            
+
             await self.cache.set("holder_concentration", mint, result, ttl=60)
             return result
         except Exception as e:
@@ -698,28 +698,28 @@ class TokenScanner:
             cached = await self.cache.get("creator_holdings", mint)
             if cached is not None:
                 return cached
-            
+
             creator_pct = 0.0
             creator_address = None
-            
+
             if self.birdeye:
                 creation_info = await self.birdeye.get_token_creation_info(mint)
                 if creation_info:
                     creator_address = creation_info.get("creator")
-            
+
             rugcheck_report = await self.rugcheck.get_token_report(mint)
             if rugcheck_report:
                 creator_pct = rugcheck_report.get("creatorPct", 0)
                 if not creator_address:
                     creator_address = rugcheck_report.get("creator")
-            
+
             if creator_pct == 0 and not creator_address:
                 return SafetyCheck(
                     name="creator_holdings", status=CheckStatus.UNKNOWN,
                     value=None, message="Could not determine creator holdings",
                     weight=CHECK_WEIGHTS["creator_holdings"]
                 )
-            
+
             if creator_pct <= 5:
                 result = SafetyCheck(
                     name="creator_holdings", status=CheckStatus.PASSED,
@@ -741,7 +741,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["creator_holdings"],
                     details={"creator": creator_address, "percentage": creator_pct}
                 )
-            
+
             await self.cache.set("creator_holdings", mint, result, ttl=60)
             return result
         except Exception as e:
@@ -751,33 +751,33 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["creator_holdings"]
             )
-    
+
     async def check_honeypot(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("honeypot", mint)
             if cached is not None:
                 return cached
-            
+
             is_honeypot = False
             honeypot_details = {}
-            
+
             rugcheck_report = await self.rugcheck.get_token_report(mint)
             if rugcheck_report:
                 risks = rugcheck_report.get("risks", [])
                 honeypot_risks = [
-                    r for r in risks 
+                    r for r in risks
                     if "honeypot" in r.get("name", "").lower() or
                        "sell" in r.get("description", "").lower()
                 ]
                 is_honeypot = len(honeypot_risks) > 0
                 honeypot_details["risks"] = honeypot_risks
-            
+
             if self.birdeye and not is_honeypot:
                 security = await self.birdeye.get_token_security(mint)
                 if security:
                     is_honeypot = security.get("isHoneypot", False)
                     honeypot_details["birdeye"] = security
-            
+
             if not is_honeypot:
                 result = SafetyCheck(
                     name="honeypot", status=CheckStatus.PASSED,
@@ -792,7 +792,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["honeypot"],
                     details=honeypot_details
                 )
-            
+
             await self.cache.set("honeypot", mint, result, ttl=120)
             return result
         except Exception as e:
@@ -802,13 +802,13 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["honeypot"]
             )
-    
+
     async def check_liquidity_depth(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("liquidity_depth", mint)
             if cached is not None:
                 return cached
-            
+
             pairs = await self.dexscreener.get_token_pairs(mint)
             if not pairs:
                 return SafetyCheck(
@@ -816,11 +816,11 @@ class TokenScanner:
                     value=0, message="NO LIQUIDITY POOLS FOUND",
                     weight=CHECK_WEIGHTS["liquidity_depth"]
                 )
-            
+
             total_liquidity = sum(
                 float(p.get("liquidity", {}).get("usd", 0)) for p in pairs
             )
-            
+
             if total_liquidity >= self.min_liquidity_usd:
                 result = SafetyCheck(
                     name="liquidity_depth", status=CheckStatus.PASSED,
@@ -845,7 +845,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["liquidity_depth"],
                     details={"usd": total_liquidity, "pools": len(pairs)}
                 )
-            
+
             await self.cache.set("liquidity_depth", mint, result, ttl=30)
             return result
         except Exception as e:
@@ -855,15 +855,15 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["liquidity_depth"]
             )
-    
+
     async def check_age(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("token_age", mint)
             if cached is not None:
                 return cached
-            
+
             created_at = None
-            
+
             pairs = await self.dexscreener.get_token_pairs(mint)
             if pairs:
                 for pair in pairs:
@@ -872,25 +872,25 @@ class TokenScanner:
                         pair_time = datetime.fromtimestamp(pair_created / 1000)
                         if created_at is None or pair_time < created_at:
                             created_at = pair_time
-            
+
             if self.birdeye and created_at is None:
                 creation_info = await self.birdeye.get_token_creation_info(mint)
                 if creation_info:
                     created_ts = creation_info.get("createdTime")
                     if created_ts:
                         created_at = datetime.fromtimestamp(created_ts)
-            
+
             if created_at is None:
                 return SafetyCheck(
                     name="token_age", status=CheckStatus.UNKNOWN,
                     value=None, message="Could not determine token age",
                     weight=CHECK_WEIGHTS["token_age"]
                 )
-            
+
             age_minutes = (datetime.utcnow() - created_at).total_seconds() / 60
             age_hours = age_minutes / 60
             age_days = age_hours / 24
-            
+
             if age_minutes < self.min_token_age_minutes:
                 result = SafetyCheck(
                     name="token_age", status=CheckStatus.FAILED,
@@ -915,7 +915,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["token_age"],
                     details={"age_minutes": age_minutes}
                 )
-            
+
             await self.cache.set("token_age", mint, result, ttl=60)
             return result
         except Exception as e:
@@ -925,15 +925,15 @@ class TokenScanner:
                 value=None, message=f"Error: {str(e)}",
                 weight=CHECK_WEIGHTS["token_age"]
             )
-    
+
     async def check_social_presence(self, mint: str) -> SafetyCheck:
         try:
             cached = await self.cache.get("social_presence", mint)
             if cached is not None:
                 return cached
-            
+
             socials = {"twitter": None, "website": None, "telegram": None, "discord": None}
-            
+
             pairs = await self.dexscreener.get_token_pairs(mint)
             if pairs and len(pairs) > 0:
                 info = pairs[0].get("info", {})
@@ -945,7 +945,7 @@ class TokenScanner:
                 websites = info.get("websites", [])
                 if websites:
                     socials["website"] = websites[0].get("url")
-            
+
             if self.birdeye:
                 overview = await self.birdeye.get_token_overview(mint)
                 if overview:
@@ -954,9 +954,9 @@ class TokenScanner:
                         socials["twitter"] = extensions.get("twitter")
                     if not socials["website"]:
                         socials["website"] = extensions.get("website")
-            
+
             valid_socials = sum(1 for v in socials.values() if v)
-            
+
             if valid_socials >= 2:
                 result = SafetyCheck(
                     name="social_presence", status=CheckStatus.PASSED,
@@ -978,7 +978,7 @@ class TokenScanner:
                     weight=CHECK_WEIGHTS["social_presence"],
                     details=socials
                 )
-            
+
             await self.cache.set("social_presence", mint, result, ttl=300)
             return result
         except Exception as e:
@@ -990,27 +990,27 @@ class TokenScanner:
             )
 
     def calculate_risk_score(
-        self, 
+        self,
         checks: Dict[str, SafetyCheck],
         has_critical_flags: bool = False
     ) -> Tuple[float, float]:
         if has_critical_flags:
             return 0.0, 1.0
-        
+
         total_weight = sum(CHECK_WEIGHTS.values())
         earned_score = 0.0
         checked_weight = 0.0
-        
+
         for name, check in checks.items():
             if check.status not in [CheckStatus.UNKNOWN, CheckStatus.SKIPPED]:
                 earned_score += check.score_contribution
                 checked_weight += check.weight
-        
+
         confidence = checked_weight / total_weight if total_weight > 0 else 0.0
         score = (earned_score / checked_weight) * 100 if checked_weight > 0 else 50.0
-        
+
         return score, confidence
-    
+
     def determine_risk_level(self, score: float, flags: List[str]) -> RiskLevel:
         if flags:
             return RiskLevel.SCAM
@@ -1022,10 +1022,10 @@ class TokenScanner:
             return RiskLevel.DANGER
         else:
             return RiskLevel.SCAM
-    
+
     def generate_recommendation(
-        self, 
-        risk_level: RiskLevel, 
+        self,
+        risk_level: RiskLevel,
         flags: List[str],
         warnings: List[str]
     ) -> str:
@@ -1041,11 +1041,11 @@ class TokenScanner:
             if warnings:
                 return "RELATIVELY SAFE - Minor concerns, standard precautions apply"
             return "APPEARS SAFE - Standard trading precautions apply"
-    
+
     async def scan_token(self, mint: str, skip_cache: bool = False) -> TokenSafetyReport:
         start_time = datetime.utcnow()
         logger.info(f"Starting token scan: {mint}")
-        
+
         if self.is_blacklisted(mint):
             return TokenSafetyReport(
                 mint=mint, risk_score=0.0, risk_level=RiskLevel.SCAM,
@@ -1054,7 +1054,7 @@ class TokenScanner:
                 confidence=1.0, token_info={"blacklisted": True},
                 scan_duration_ms=0, data_sources_used=["blacklist"]
             )
-        
+
         if self.is_whitelisted(mint):
             return TokenSafetyReport(
                 mint=mint, risk_score=100.0, risk_level=RiskLevel.SAFE,
@@ -1063,11 +1063,11 @@ class TokenScanner:
                 confidence=1.0, token_info={"whitelisted": True},
                 scan_duration_ms=0, data_sources_used=["whitelist"]
             )
-        
+
         if skip_cache:
             for category in CHECK_WEIGHTS.keys():
                 await self.cache.invalidate(category, mint)
-        
+
         check_tasks = {
             "mint_authority": self.check_mint_authority(mint),
             "freeze_authority": self.check_freeze_authority(mint),
@@ -1079,9 +1079,9 @@ class TokenScanner:
             "token_age": self.check_age(mint),
             "social_presence": self.check_social_presence(mint),
         }
-        
+
         results = await asyncio.gather(*check_tasks.values(), return_exceptions=True)
-        
+
         checks: Dict[str, SafetyCheck] = {}
         for name, result in zip(check_tasks.keys(), results):
             if isinstance(result, Exception):
@@ -1093,10 +1093,10 @@ class TokenScanner:
                 )
             else:
                 checks[name] = result
-        
+
         flags: List[str] = []
         warnings: List[str] = []
-        
+
         for name, check in checks.items():
             if check.is_critical_failure:
                 flags.append(f"{name}: {check.message}")
@@ -1104,16 +1104,16 @@ class TokenScanner:
                 warnings.append(f"{name}: {check.message}")
             elif check.status == CheckStatus.WARNING:
                 warnings.append(f"{name}: {check.message}")
-        
+
         has_critical = (
             checks.get("mint_authority", SafetyCheck("", CheckStatus.UNKNOWN, None, "", 0)).status == CheckStatus.FAILED or
             checks.get("honeypot", SafetyCheck("", CheckStatus.UNKNOWN, None, "", 0)).status == CheckStatus.FAILED
         )
-        
+
         risk_score, confidence = self.calculate_risk_score(checks, has_critical)
         risk_level = self.determine_risk_level(risk_score, flags)
         recommendation = self.generate_recommendation(risk_level, flags, warnings)
-        
+
         token_info = {}
         try:
             pairs = await self.dexscreener.get_token_pairs(mint)
@@ -1131,16 +1131,16 @@ class TokenScanner:
                 }
         except Exception as e:
             logger.warning(f"Could not fetch token info: {e}")
-        
+
         end_time = datetime.utcnow()
         duration_ms = (end_time - start_time).total_seconds() * 1000
-        
+
         data_sources = ["solana_rpc", "dexscreener", "rugcheck"]
         if self.birdeye:
             data_sources.append("birdeye")
         if self.helius:
             data_sources.append("helius")
-        
+
         report = TokenSafetyReport(
             mint=mint, risk_score=risk_score, risk_level=risk_level,
             checks=checks, flags=flags, warnings=warnings,
@@ -1148,28 +1148,28 @@ class TokenScanner:
             token_info=token_info, timestamp=end_time,
             scan_duration_ms=duration_ms, data_sources_used=data_sources
         )
-        
+
         logger.info(f"Scan complete: {mint} - Score: {risk_score:.1f}, Level: {risk_level.value}")
         return report
-    
+
     async def quick_scan(self, mint: str) -> Tuple[bool, str]:
         if self.is_blacklisted(mint):
             return False, "Token is blacklisted"
         if self.is_whitelisted(mint):
             return True, "Token is whitelisted"
-        
+
         mint_check = await self.check_mint_authority(mint)
         if mint_check.status == CheckStatus.FAILED:
             return False, "Mint authority not revoked"
-        
+
         honeypot_check = await self.check_honeypot(mint)
         if honeypot_check.status == CheckStatus.FAILED:
             return False, "Honeypot detected"
-        
+
         liquidity_check = await self.check_liquidity_depth(mint)
         if liquidity_check.value and liquidity_check.value < 1000:
             return False, f"Very low liquidity: ${liquidity_check.value:,.0f}"
-        
+
         return True, "Passed quick safety checks"
 
     async def monitor_token(
@@ -1179,23 +1179,23 @@ class TokenScanner:
         interval_seconds: int = 30,
     ) -> str:
         monitor_id = f"monitor_{mint}_{datetime.utcnow().timestamp()}"
-        
+
         async def monitor_loop():
             last_state = {}
-            
+
             while True:
                 try:
                     pairs = await self.dexscreener.get_token_pairs(mint)
-                    
+
                     if pairs:
                         current_liquidity = sum(
                             float(p.get("liquidity", {}).get("usd", 0)) for p in pairs
                         )
-                        
+
                         if "liquidity" in last_state and last_state["liquidity"] > 0:
-                            liq_change_pct = ((current_liquidity - last_state["liquidity"]) 
+                            liq_change_pct = ((current_liquidity - last_state["liquidity"])
                                             / last_state["liquidity"] * 100)
-                            
+
                             if liq_change_pct < -20:
                                 alert = TokenAlert(
                                     mint=mint,
@@ -1209,9 +1209,9 @@ class TokenScanner:
                                     }
                                 )
                                 callback(alert)
-                        
+
                         last_state["liquidity"] = current_liquidity
-                        
+
                         if pairs[0].get("priceChange", {}).get("m5"):
                             price_change_5m = float(pairs[0]["priceChange"]["m5"])
                             if price_change_5m < -30:
@@ -1223,11 +1223,11 @@ class TokenScanner:
                                     data={"price_change_5m": price_change_5m}
                                 )
                                 callback(alert)
-                    
+
                     mint_info = await self.rpc.get_mint_info(mint)
                     if mint_info:
                         current_mint_auth = mint_info.get("mintAuthority")
-                        
+
                         if "mint_authority" in last_state:
                             if last_state["mint_authority"] is None and current_mint_auth is not None:
                                 alert = TokenAlert(
@@ -1238,25 +1238,25 @@ class TokenScanner:
                                     data={"new_authority": current_mint_auth}
                                 )
                                 callback(alert)
-                        
+
                         last_state["mint_authority"] = current_mint_auth
-                    
+
                     await asyncio.sleep(interval_seconds)
-                    
+
                 except asyncio.CancelledError:
                     logger.info(f"Monitor {monitor_id} cancelled")
                     break
                 except Exception as e:
                     logger.error(f"Monitor error: {e}")
                     await asyncio.sleep(interval_seconds)
-        
+
         task = asyncio.create_task(monitor_loop())
         self._monitors[monitor_id] = task
         self._alert_callbacks[mint].append(callback)
-        
+
         logger.info(f"Started monitoring {mint} with ID {monitor_id}")
         return monitor_id
-    
+
     def stop_monitor(self, monitor_id: str) -> bool:
         if monitor_id in self._monitors:
             self._monitors[monitor_id].cancel()
@@ -1264,29 +1264,29 @@ class TokenScanner:
             logger.info(f"Stopped monitor {monitor_id}")
             return True
         return False
-    
+
     def stop_all_monitors(self):
         for monitor_id, task in list(self._monitors.items()):
             task.cancel()
         self._monitors.clear()
         self._alert_callbacks.clear()
         logger.info("Stopped all monitors")
-    
+
     async def batch_scan(
-        self, 
+        self,
         mints: List[str],
         max_concurrent: int = 5
     ) -> Dict[str, TokenSafetyReport]:
         semaphore = asyncio.Semaphore(max_concurrent)
-        
+
         async def scan_with_limit(mint: str) -> Tuple[str, TokenSafetyReport]:
             async with semaphore:
                 report = await self.scan_token(mint)
                 return mint, report
-        
+
         tasks = [scan_with_limit(mint) for mint in mints]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         reports = {}
         for result in results:
             if isinstance(result, tuple):
@@ -1294,16 +1294,16 @@ class TokenScanner:
                 reports[mint] = report
             else:
                 logger.error(f"Batch scan error: {result}")
-        
+
         return reports
-    
+
     async def get_token_summary(self, mint: str) -> Dict[str, Any]:
         summary = {
             "mint": mint,
             "whitelisted": self.is_whitelisted(mint),
             "blacklisted": self.is_blacklisted(mint),
         }
-        
+
         pairs = await self.dexscreener.get_token_pairs(mint)
         if pairs and len(pairs) > 0:
             main_pair = pairs[0]
@@ -1314,7 +1314,7 @@ class TokenScanner:
                 "liquidity_usd": main_pair.get("liquidity", {}).get("usd"),
                 "volume_24h": main_pair.get("volume", {}).get("h24"),
             })
-        
+
         return summary
 
 def create_token_scanner(
@@ -1332,23 +1332,23 @@ def create_token_scanner(
 
 async def main():
     import os
-    
+
     scanner = create_token_scanner(
         rpc_endpoint=os.getenv("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
         birdeye_api_key=os.getenv("BIRDEYE_API_KEY"),
         helius_api_key=os.getenv("HELIUS_API_KEY"),
     )
-    
+
     try:
         bonk_mint = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
-        
+
         print("Scanning token...")
         report = await scanner.scan_token(bonk_mint)
         print(f"Risk Score: {report.risk_score:.1f}/100")
         print(f"Risk Level: {report.risk_level.value}")
         print(f"Recommendation: {report.recommendation}")
         print(f"Scan Duration: {report.scan_duration_ms:.0f}ms")
-        
+
     finally:
         await scanner.close()
 
