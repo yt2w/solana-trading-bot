@@ -23,16 +23,45 @@
 
 A production-ready Telegram bot that enables trading on Solana through the Jupiter DEX aggregator. Built with async Python for high performance, featuring encrypted wallet storage, comprehensive risk management, and a modular architecture.
 
-```
-+-------------------------------------------------------------+
-|                    TELEGRAM INTERFACE                       |
-+-------------------------------------------------------------+
-|  User Commands -> Bot Handler -> Trading Engine -> Jupiter    |
-|                                      v                      |
-|                              Risk Manager                   |
-|                                      v                      |
-|                              Transaction Builder -> Solana   |
-+-------------------------------------------------------------+
+```mermaid
+flowchart TB
+    subgraph Interface["📱 TELEGRAM INTERFACE"]
+        UC[User Commands]
+    end
+    
+    subgraph Core["⚙️ CORE ENGINE"]
+        BH[Bot Handler]
+        TE[Trading Engine]
+        RM[Risk Manager]
+    end
+    
+    subgraph Blockchain["🔗 BLOCKCHAIN LAYER"]
+        JUP[Jupiter Aggregator]
+        TB[Transaction Builder]
+        SOL[(Solana Network)]
+    end
+    
+    subgraph Security["🔒 SECURITY"]
+        VAL[Validators]
+        ENC[Encryption]
+        AUDIT[Audit Logger]
+    end
+    
+    UC --> BH
+    BH --> TE
+    TE --> RM
+    RM --> JUP
+    JUP --> TB
+    TB --> SOL
+    
+    TE -.-> VAL
+    BH -.-> ENC
+    TE -.-> AUDIT
+    
+    style Interface fill:#9945FF,stroke:#14F195,color:#fff
+    style Core fill:#1a1a2e,stroke:#14F195,color:#fff
+    style Blockchain fill:#14F195,stroke:#9945FF,color:#000
+    style Security fill:#2d2d44,stroke:#14F195,color:#fff
 ```
 
 ---
