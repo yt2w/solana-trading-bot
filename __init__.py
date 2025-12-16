@@ -1,22 +1,45 @@
 """
-Solana Trading Bot
+Solana Trading Bot - Core Trading Package
+==========================================
 
-A Telegram-based trading bot for Solana tokens using Jupiter aggregator.
+Production-ready trading infrastructure for Solana.
 """
 
 __version__ = "1.0.0"
-__author__ = "Trading Bot Developer"
+__author__ = "Trading Bot Team"
 
-from .config import config, Tokens
-from .database import get_database, Trade, Position
-from .bot import get_bot, TradingBot
+# Import all modules for easy access
+from . import exceptions
+from . import validators
+from . import rate_limiter
+from . import retry
+from . import audit_secure
+from . import transaction
+from . import jupiter_async
+from . import wallet_async
+from . import risk_manager
+from . import token_scanner
+from . import dca_engine
+from . import copy_trading
+from . import alerts
+from . import analytics
 
 __all__ = [
-    "config",
-    "Tokens",
-    "get_database",
-    "Trade",
-    "Position",
-    "get_bot",
-    "TradingBot",
+    "exceptions",
+    "validators", 
+    "rate_limiter",
+    "retry",
+    "audit_secure",
+    "transaction",
+    "jupiter_async",
+    "wallet_async",
+    "risk_manager",
+    "token_scanner",
+    "dca_engine",
+    "copy_trading",
+    "alerts",
+    "analytics",
 ]
+
+def get_version():
+    return __version__
