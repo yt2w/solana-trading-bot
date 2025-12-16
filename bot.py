@@ -1,7 +1,3 @@
-"""
-Solana Trading Bot - Production Grade
-Enterprise-level Telegram bot for Solana trading via Jupiter DEX.
-"""
 
 import asyncio
 import logging
@@ -28,7 +24,6 @@ JUPITER_QUOTE_API = "https://quote-api.jup.ag/v6/quote"
 JUPITER_SWAP_API = "https://quote-api.jup.ag/v6/swap"
 JUPITER_TOKEN_API = "https://token.jup.ag/strict"
 
-
 class RateLimiter:
     def __init__(self, max_requests: int = 20, window: int = 60):
         self.max_requests = max_requests
@@ -43,14 +38,12 @@ class RateLimiter:
         self._requests[user_id].append(now)
         return True
 
-
 @dataclass
 class TokenInfo:
     address: str
     symbol: str
     name: str
     decimals: int
-
 
 @dataclass
 class SwapQuote:
@@ -62,14 +55,11 @@ class SwapQuote:
     route: str
     raw: Dict[str, Any] = field(default_factory=dict)
 
-
 @dataclass
 class SwapResult:
     success: bool
     signature: str = ""
     error: str = ""
-
-
 
 class SecureWallet:
     def __init__(self, private_key: str, rpc_url: str):
@@ -121,7 +111,6 @@ class SecureWallet:
         except Exception as e:
             logger.error(f"Token balance error: {e}")
         return 0.0, 0
-
 
 class JupiterClient:
     def __init__(self, rpc_url: str):
@@ -208,8 +197,6 @@ class JupiterClient:
         except Exception as e:
             logger.error(f"Swap error: {e}")
             return SwapResult(success=False, error=str(e))
-
-
 
 class TradingBot:
     def __init__(self):
@@ -422,7 +409,6 @@ class TradingBot:
             parse_mode="HTML"
         )
 
-
     async def handle_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         query = update.callback_query
         await query.answer()
@@ -510,7 +496,6 @@ class TradingBot:
     def run(self):
         logger.info("Starting bot...")
         self.app.run_polling(drop_pending_updates=True)
-
 
 if __name__ == "__main__":
     bot = TradingBot()
