@@ -1,7 +1,3 @@
-"""
-Token Scanner - Rug Pull Detection & Token Safety Analysis
-Production-grade token safety scanner for Solana tokens.
-"""
 
 import asyncio
 import aiohttp
@@ -14,33 +10,22 @@ from enum import Enum
 from typing import Optional, Dict, List, Any, Callable, Set, Tuple
 from collections import defaultdict
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# ENUMS & CONSTANTS
-# =============================================================================
-
 class RiskLevel(Enum):
-    """Token risk level classification."""
-    SAFE = "SAFE"           # 80-100 score
-    CAUTION = "CAUTION"     # 50-79 score  
-    DANGER = "DANGER"       # 20-49 score
-    SCAM = "SCAM"           # 0-19 score or critical flags
-
+    SAFE = "SAFE"
+    CAUTION = "CAUTION"
+    DANGER = "DANGER"
+    SCAM = "SCAM"
 
 class CheckStatus(Enum):
-    """Status of individual safety check."""
     PASSED = "PASSED"
     WARNING = "WARNING"
     FAILED = "FAILED"
     UNKNOWN = "UNKNOWN"
     SKIPPED = "SKIPPED"
 
-
 class AlertType(Enum):
-    """Types of real-time alerts."""
     LP_REMOVAL = "LP_REMOVAL"
     LARGE_SELL = "LARGE_SELL"
     AUTHORITY_CHANGE = "AUTHORITY_CHANGE"
@@ -48,19 +33,17 @@ class AlertType(Enum):
     PRICE_CRASH = "PRICE_CRASH"
     SUSPICIOUS_ACTIVITY = "SUSPICIOUS_ACTIVITY"
 
-
-# Known safe tokens (mainnet addresses)
 KNOWN_SAFE_TOKENS: Set[str] = {
-    "So11111111111111111111111111111111111111112",   # Wrapped SOL
-    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",  # USDC
-    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",  # USDT
-    "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",   # mSOL
-    "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj",  # stSOL
-    "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",  # BONK
-    "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",   # JUP
-    "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",   # JTO
-    "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",  # PYTH
-    "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",   # RNDR
+    "So11111111111111111111111111111111111111112",
+    "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+    "mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So",
+    "7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj",
+    "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263",
+    "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN",
+    "jtojtomepa8beP8AuQc6eXt5FriJwfFMwQx2v2f9mCL",
+    "HZ1JovNiVvGrGNiiYvEozEVgZ58xaU3RKwX8eACQBCt3",
+    "rndrizKT3MK1iimdxRdWabcF7Zg7AR5T4nud4EkHBof",
 }
 
 KNOWN_SCAM_TOKENS: Set[str] = set()
@@ -84,10 +67,8 @@ CRITICAL_FLAGS: Set[str] = {
     "confirmed_scam",
 }
 
-
 @dataclass
 class SafetyCheck:
-    """Result of an individual safety check."""
     name: str
     status: CheckStatus
     value: Any
@@ -109,10 +90,8 @@ class SafetyCheck:
         return (self.status == CheckStatus.FAILED and 
                 self.name in ["mint_authority", "honeypot", "confirmed_scam"])
 
-
 @dataclass
 class TokenSafetyReport:
-    """Comprehensive token safety analysis report."""
     mint: str
     risk_score: float
     risk_level: RiskLevel
@@ -142,10 +121,8 @@ class TokenSafetyReport:
             "timestamp": self.timestamp.isoformat(),
         }
 
-
 @dataclass
 class TokenAlert:
-    """Real-time monitoring alert."""
     mint: str
     alert_type: AlertType
     severity: str
@@ -153,20 +130,16 @@ class TokenAlert:
     data: Dict[str, Any]
     timestamp: datetime = field(default_factory=datetime.utcnow)
 
-
 @dataclass 
 class HolderInfo:
-    """Token holder information."""
     address: str
     balance: float
     percentage: float
     is_creator: bool = False
     is_lp: bool = False
 
-
 @dataclass
 class LiquidityInfo:
-    """Liquidity pool information."""
     pool_address: str
     dex: str
     base_amount: float
@@ -176,13 +149,7 @@ class LiquidityInfo:
     lock_end_time: Optional[datetime]
     lock_percentage: float
 
-
-# =============================================================================
-# DATA SOURCE CLIENTS
-# =============================================================================
-
 class SolanaRPCClient:
-    """Solana RPC client for on-chain data."""
     
     def __init__(self, endpoint: str, rate_limit: int = 10):
         self.endpoint = endpoint
@@ -199,7 +166,6 @@ class SolanaRPCClient:
             await self._session.close()
     
     async def _rpc_call(self, method: str, params: List[Any]) -> Optional[Dict]:
-        """Make RPC call with rate limiting."""
         async with self._semaphore:
             await self._ensure_session()
             payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params}
@@ -238,9 +204,7 @@ class SolanaRPCClient:
     async def get_signatures_for_address(self, address: str, limit: int = 10) -> Optional[List[Dict]]:
         return await self._rpc_call("getSignaturesForAddress", [address, {"limit": limit}])
 
-
 class BirdeyeClient:
-    """Birdeye API client for token metadata and analytics."""
     
     BASE_URL = "https://public-api.birdeye.so"
     
@@ -291,9 +255,7 @@ class BirdeyeClient:
         result = await self._get("/defi/token_creation_info", {"address": mint})
         return result.get("data") if result else None
 
-
 class DexScreenerClient:
-    """DexScreener API client for liquidity and market data."""
     
     BASE_URL = "https://api.dexscreener.com/latest"
     
@@ -335,9 +297,7 @@ class DexScreenerClient:
             return result["pairs"][0]
         return None
 
-
 class RugCheckClient:
-    """RugCheck API client for rug pull analysis."""
     
     BASE_URL = "https://api.rugcheck.xyz/v1"
     
@@ -375,9 +335,7 @@ class RugCheckClient:
     async def get_token_summary(self, mint: str) -> Optional[Dict]:
         return await self._get(f"/tokens/{mint}/report/summary")
 
-
 class HeliusClient:
-    """Helius API client for enhanced Solana data."""
     
     BASE_URL = "https://api.helius.xyz/v0"
     
@@ -433,13 +391,7 @@ class HeliusClient:
             return result[0]
         return None
 
-
-# =============================================================================
-# CACHE IMPLEMENTATION  
-# =============================================================================
-
 class TokenCache:
-    """In-memory cache with TTL support."""
     
     def __init__(self, default_ttl: int = 60):
         self.default_ttl = default_ttl
@@ -475,22 +427,7 @@ class TokenCache:
         async with self._lock:
             self._cache.clear()
 
-
-# =============================================================================
-# MAIN TOKEN SCANNER CLASS
-# =============================================================================
-
 class TokenScanner:
-    """
-    Production-grade token safety scanner for Solana tokens.
-    
-    Features:
-    - Multiple data source integration
-    - Comprehensive safety checks
-    - Risk score calculation
-    - Real-time monitoring
-    - Caching for performance
-    """
     
     def __init__(
         self,
@@ -506,30 +443,25 @@ class TokenScanner:
         self.max_holder_concentration = max_holder_concentration
         self.min_token_age_minutes = min_token_age_minutes
         
-        # Initialize clients
         self.rpc = SolanaRPCClient(rpc_endpoint)
         self.birdeye = BirdeyeClient(birdeye_api_key) if birdeye_api_key else None
         self.helius = HeliusClient(helius_api_key) if helius_api_key else None
         self.dexscreener = DexScreenerClient()
         self.rugcheck = RugCheckClient()
         
-        # Initialize cache
         self.cache = TokenCache(default_ttl=cache_ttl)
         
-        # Whitelist/Blacklist
         self.whitelist: Set[str] = set(KNOWN_SAFE_TOKENS)
         self.blacklist: Set[str] = set(KNOWN_SCAM_TOKENS)
         self.user_whitelist: Set[str] = set()
         self.user_blacklist: Set[str] = set()
         
-        # Monitoring state
         self._monitors: Dict[str, asyncio.Task] = {}
         self._alert_callbacks: Dict[str, List[Callable]] = defaultdict(list)
         
         logger.info("TokenScanner initialized")
     
     async def close(self):
-        """Close all client connections."""
         await self.rpc.close()
         await self.dexscreener.close()
         await self.rugcheck.close()
@@ -540,10 +472,6 @@ class TokenScanner:
         for task in self._monitors.values():
             task.cancel()
         logger.info("TokenScanner closed")
-    
-    # =========================================================================
-    # WHITELIST/BLACKLIST MANAGEMENT
-    # =========================================================================
     
     def add_to_whitelist(self, mint: str):
         self.user_whitelist.add(mint)
@@ -563,12 +491,7 @@ class TokenScanner:
     def is_blacklisted(self, mint: str) -> bool:
         return mint in self.blacklist or mint in self.user_blacklist
     
-    # =========================================================================
-    # INDIVIDUAL SAFETY CHECKS
-    # =========================================================================
-    
     async def check_mint_authority(self, mint: str) -> SafetyCheck:
-        """Check if mint authority is revoked. Active = CRITICAL risk."""
         try:
             cached = await self.cache.get("mint_authority", mint)
             if cached is not None:
@@ -610,7 +533,6 @@ class TokenScanner:
             )
     
     async def check_freeze_authority(self, mint: str) -> SafetyCheck:
-        """Check if freeze authority is revoked."""
         try:
             cached = await self.cache.get("freeze_authority", mint)
             if cached is not None:
@@ -652,7 +574,6 @@ class TokenScanner:
             )
     
     async def check_lp_lock(self, mint: str) -> SafetyCheck:
-        """Check if liquidity pool is locked."""
         try:
             cached = await self.cache.get("lp_lock", mint)
             if cached is not None:
@@ -705,7 +626,6 @@ class TokenScanner:
             )
     
     async def check_holder_concentration(self, mint: str) -> SafetyCheck:
-        """Check top holder concentration."""
         try:
             cached = await self.cache.get("holder_concentration", mint)
             if cached is not None:
@@ -773,9 +693,7 @@ class TokenScanner:
                 weight=CHECK_WEIGHTS["holder_concentration"]
             )
 
-    
     async def check_creator_holdings(self, mint: str) -> SafetyCheck:
-        """Check if creator still holds large percentage."""
         try:
             cached = await self.cache.get("creator_holdings", mint)
             if cached is not None:
@@ -835,7 +753,6 @@ class TokenScanner:
             )
     
     async def check_honeypot(self, mint: str) -> SafetyCheck:
-        """Check if token is a honeypot (can buy but cannot sell)."""
         try:
             cached = await self.cache.get("honeypot", mint)
             if cached is not None:
@@ -887,7 +804,6 @@ class TokenScanner:
             )
     
     async def check_liquidity_depth(self, mint: str) -> SafetyCheck:
-        """Check liquidity depth. Low liquidity = high risk."""
         try:
             cached = await self.cache.get("liquidity_depth", mint)
             if cached is not None:
@@ -941,7 +857,6 @@ class TokenScanner:
             )
     
     async def check_age(self, mint: str) -> SafetyCheck:
-        """Check token age. Very new tokens = higher risk."""
         try:
             cached = await self.cache.get("token_age", mint)
             if cached is not None:
@@ -1012,7 +927,6 @@ class TokenScanner:
             )
     
     async def check_social_presence(self, mint: str) -> SafetyCheck:
-        """Check for social media presence."""
         try:
             cached = await self.cache.get("social_presence", mint)
             if cached is not None:
@@ -1075,17 +989,11 @@ class TokenScanner:
                 weight=CHECK_WEIGHTS["social_presence"]
             )
 
-    
-    # =========================================================================
-    # RISK SCORE CALCULATION
-    # =========================================================================
-    
     def calculate_risk_score(
         self, 
         checks: Dict[str, SafetyCheck],
         has_critical_flags: bool = False
     ) -> Tuple[float, float]:
-        """Calculate overall risk score from individual checks."""
         if has_critical_flags:
             return 0.0, 1.0
         
@@ -1104,7 +1012,6 @@ class TokenScanner:
         return score, confidence
     
     def determine_risk_level(self, score: float, flags: List[str]) -> RiskLevel:
-        """Determine risk level from score and flags."""
         if flags:
             return RiskLevel.SCAM
         elif score >= 80:
@@ -1122,7 +1029,6 @@ class TokenScanner:
         flags: List[str],
         warnings: List[str]
     ) -> str:
-        """Generate human-readable recommendation."""
         if risk_level == RiskLevel.SCAM:
             return "DO NOT BUY - High probability of scam/rug pull"
         elif risk_level == RiskLevel.DANGER:
@@ -1136,16 +1042,10 @@ class TokenScanner:
                 return "RELATIVELY SAFE - Minor concerns, standard precautions apply"
             return "APPEARS SAFE - Standard trading precautions apply"
     
-    # =========================================================================
-    # MAIN SCAN FUNCTION
-    # =========================================================================
-    
     async def scan_token(self, mint: str, skip_cache: bool = False) -> TokenSafetyReport:
-        """Perform comprehensive token safety scan."""
         start_time = datetime.utcnow()
         logger.info(f"Starting token scan: {mint}")
         
-        # Check whitelist/blacklist first
         if self.is_blacklisted(mint):
             return TokenSafetyReport(
                 mint=mint, risk_score=0.0, risk_level=RiskLevel.SCAM,
@@ -1164,12 +1064,10 @@ class TokenScanner:
                 scan_duration_ms=0, data_sources_used=["whitelist"]
             )
         
-        # Clear cache if requested
         if skip_cache:
             for category in CHECK_WEIGHTS.keys():
                 await self.cache.invalidate(category, mint)
         
-        # Run all checks concurrently
         check_tasks = {
             "mint_authority": self.check_mint_authority(mint),
             "freeze_authority": self.check_freeze_authority(mint),
@@ -1196,7 +1094,6 @@ class TokenScanner:
             else:
                 checks[name] = result
         
-        # Collect flags and warnings
         flags: List[str] = []
         warnings: List[str] = []
         
@@ -1208,18 +1105,15 @@ class TokenScanner:
             elif check.status == CheckStatus.WARNING:
                 warnings.append(f"{name}: {check.message}")
         
-        # Check for critical flags
         has_critical = (
             checks.get("mint_authority", SafetyCheck("", CheckStatus.UNKNOWN, None, "", 0)).status == CheckStatus.FAILED or
             checks.get("honeypot", SafetyCheck("", CheckStatus.UNKNOWN, None, "", 0)).status == CheckStatus.FAILED
         )
         
-        # Calculate score
         risk_score, confidence = self.calculate_risk_score(checks, has_critical)
         risk_level = self.determine_risk_level(risk_score, flags)
         recommendation = self.generate_recommendation(risk_level, flags, warnings)
         
-        # Gather token info
         token_info = {}
         try:
             pairs = await self.dexscreener.get_token_pairs(mint)
@@ -1259,7 +1153,6 @@ class TokenScanner:
         return report
     
     async def quick_scan(self, mint: str) -> Tuple[bool, str]:
-        """Quick safety check - returns pass/fail and reason."""
         if self.is_blacklisted(mint):
             return False, "Token is blacklisted"
         if self.is_whitelisted(mint):
@@ -1279,18 +1172,12 @@ class TokenScanner:
         
         return True, "Passed quick safety checks"
 
-    
-    # =========================================================================
-    # REAL-TIME MONITORING
-    # =========================================================================
-    
     async def monitor_token(
         self,
         mint: str,
         callback: Callable[[TokenAlert], None],
         interval_seconds: int = 30,
     ) -> str:
-        """Start real-time monitoring for a token."""
         monitor_id = f"monitor_{mint}_{datetime.utcnow().timestamp()}"
         
         async def monitor_loop():
@@ -1305,7 +1192,6 @@ class TokenScanner:
                             float(p.get("liquidity", {}).get("usd", 0)) for p in pairs
                         )
                         
-                        # Check for LP removal
                         if "liquidity" in last_state and last_state["liquidity"] > 0:
                             liq_change_pct = ((current_liquidity - last_state["liquidity"]) 
                                             / last_state["liquidity"] * 100)
@@ -1326,7 +1212,6 @@ class TokenScanner:
                         
                         last_state["liquidity"] = current_liquidity
                         
-                        # Check price crash
                         if pairs[0].get("priceChange", {}).get("m5"):
                             price_change_5m = float(pairs[0]["priceChange"]["m5"])
                             if price_change_5m < -30:
@@ -1339,7 +1224,6 @@ class TokenScanner:
                                 )
                                 callback(alert)
                     
-                    # Check authority changes
                     mint_info = await self.rpc.get_mint_info(mint)
                     if mint_info:
                         current_mint_auth = mint_info.get("mintAuthority")
@@ -1374,7 +1258,6 @@ class TokenScanner:
         return monitor_id
     
     def stop_monitor(self, monitor_id: str) -> bool:
-        """Stop a specific monitor."""
         if monitor_id in self._monitors:
             self._monitors[monitor_id].cancel()
             del self._monitors[monitor_id]
@@ -1383,23 +1266,17 @@ class TokenScanner:
         return False
     
     def stop_all_monitors(self):
-        """Stop all active monitors."""
         for monitor_id, task in list(self._monitors.items()):
             task.cancel()
         self._monitors.clear()
         self._alert_callbacks.clear()
         logger.info("Stopped all monitors")
     
-    # =========================================================================
-    # UTILITY METHODS
-    # =========================================================================
-    
     async def batch_scan(
         self, 
         mints: List[str],
         max_concurrent: int = 5
     ) -> Dict[str, TokenSafetyReport]:
-        """Scan multiple tokens with concurrency limit."""
         semaphore = asyncio.Semaphore(max_concurrent)
         
         async def scan_with_limit(mint: str) -> Tuple[str, TokenSafetyReport]:
@@ -1421,7 +1298,6 @@ class TokenScanner:
         return reports
     
     async def get_token_summary(self, mint: str) -> Dict[str, Any]:
-        """Get quick token summary without full scan."""
         summary = {
             "mint": mint,
             "whitelisted": self.is_whitelisted(mint),
@@ -1441,18 +1317,12 @@ class TokenScanner:
         
         return summary
 
-
-# =============================================================================
-# FACTORY FUNCTION
-# =============================================================================
-
 def create_token_scanner(
     rpc_endpoint: str = "https://api.mainnet-beta.solana.com",
     birdeye_api_key: Optional[str] = None,
     helius_api_key: Optional[str] = None,
     **kwargs
 ) -> TokenScanner:
-    """Factory function to create TokenScanner."""
     return TokenScanner(
         rpc_endpoint=rpc_endpoint,
         birdeye_api_key=birdeye_api_key,
@@ -1460,13 +1330,7 @@ def create_token_scanner(
         **kwargs
     )
 
-
-# =============================================================================
-# MAIN ENTRY POINT
-# =============================================================================
-
 async def main():
-    """Example usage of TokenScanner."""
     import os
     
     scanner = create_token_scanner(
@@ -1476,7 +1340,6 @@ async def main():
     )
     
     try:
-        # Example: Scan BONK token
         bonk_mint = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
         
         print("Scanning token...")
@@ -1488,7 +1351,6 @@ async def main():
         
     finally:
         await scanner.close()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
