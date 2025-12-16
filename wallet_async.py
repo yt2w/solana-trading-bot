@@ -59,7 +59,7 @@ class WalletInfo:
     created_at: datetime
     is_default: bool = False
     label: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "public_key": self.public_key,
@@ -69,7 +69,7 @@ class WalletInfo:
             "is_default": self.is_default,
             "label": self.label,
         }
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "WalletInfo":
         return cls(
@@ -89,7 +89,7 @@ class TokenBalance:
     ui_amount: float
     symbol: Optional[str] = None
     name: Optional[str] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "mint": self.mint,
@@ -106,7 +106,7 @@ class BalanceResult:
     sol_ui_amount: float
     token_balances: List[TokenBalance] = field(default_factory=list)
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "sol_balance": self.sol_balance,
@@ -123,7 +123,7 @@ class RPCEndpoint:
     last_check: Optional[datetime] = None
     latency_ms: Optional[float] = None
     consecutive_failures: int = 0
-    
+
 class ConnectionState(Enum):
     DISCONNECTED = "disconnected"
     CONNECTING = "connecting"
@@ -132,15 +132,15 @@ class ConnectionState(Enum):
     FAILED = "failed"
 
 class EncryptionManager:
-    
+
     def __init__(self, master_secret: str):
         if not master_secret or len(master_secret) < 32:
             raise EncryptionError("Master secret must be at least 32 characters")
-        
+
         self._master_secret = master_secret.encode()
         self._key_cache: Dict[int, bytes] = {}
         self._cache_lock = asyncio.Lock()
-        
+
     def _derive_key(
         self,
         telegram_id: int,
@@ -149,12 +149,12 @@ class EncryptionManager:
     ) -> Tuple[bytes, bytes]:
         if salt is None:
             salt = secrets.token_bytes(ENCRYPTION_SALT_SIZE)
-        
+
         key_material = self._master_secret + str(telegram_id).encode()
-        
+
         if additional_password:
             key_material += additional_password.encode()
-        
+
         kdf = PBKDF2HMAC(
             algorithm=hashes.SHA256(),
             length=32,
@@ -162,10 +162,10 @@ class EncryptionManager:
             iterations=PBKDF2_ITERATIONS,
             backend=default_backend(),
         )
-        
+
         derived_key = base64.urlsafe_b64encode(kdf.derive(key_material))
         return derived_key, salt
-    
+
     async def get_user_key(self, telegram_id: int) -> bytes:
         async with self._cache_lock:
             if telegram_id not in self._key_cache:
@@ -174,9 +174,9 @@ class EncryptionManager:
                 ).digest()
                 key, _ = self._derive_key(telegram_id, deterministic_salt)
                 self._key_cache[telegram_id] = key
-            
+
             return self._key_cache[telegram_id]
-    
+
     async def encrypt(
         self,
         data: bytes,
@@ -189,21 +189,21 @@ class EncryptionManager:
             else:
                 key = await self.get_user_key(telegram_id)
                 salt = b""
-            
+
             fernet = Fernet(key)
             encrypted = fernet.encrypt(data)
-            
+
             if additional_password:
                 result = struct.pack(">I", len(salt)) + salt + encrypted
             else:
                 result = struct.pack(">I", 0) + encrypted
-            
+
             return result
-            
+
         except Exception as e:
             logger.error(f"Encryption failed: {e}")
             raise EncryptionError(f"Failed to encrypt data: {e}")
-    
+
     async def decrypt(
         self,
         encrypted_data: bytes,
@@ -212,7 +212,7 @@ class EncryptionManager:
     ) -> bytes:
         try:
             salt_length = struct.unpack(">I", encrypted_data[:4])[0]
-            
+
             if salt_length > 0:
                 salt = encrypted_data[4:4 + salt_length]
                 encrypted = encrypted_data[4 + salt_length:]
@@ -220,16 +220,16 @@ class EncryptionManager:
             else:
                 encrypted = encrypted_data[4:]
                 key = await self.get_user_key(telegram_id)
-            
+
             fernet = Fernet(key)
             return fernet.decrypt(encrypted)
-            
+
         except InvalidToken:
             raise DecryptionError("Invalid password or corrupted data")
         except Exception as e:
             logger.error(f"Decryption failed: {e}")
             raise DecryptionError(f"Failed to decrypt data: {e}")
-    
+
     async def rotate_key(self, telegram_id: int) -> None:
         async with self._cache_lock:
             if telegram_id in self._key_cache:
@@ -237,7 +237,7 @@ class EncryptionManager:
                 old_key_ba = bytearray(old_key)
                 for i in range(len(old_key_ba)):
                     old_key_ba[i] = 0
-    
+
     def clear_cache(self) -> None:
         for key in self._key_cache.values():
             key_ba = bytearray(key)
@@ -246,7 +246,7 @@ class EncryptionManager:
         self._key_cache.clear()
 
 class RPCConnectionPool:
-    
+
     def __init__(
         self,
         endpoints: Optional[List[str]] = None,
@@ -265,55 +265,55 @@ class RPCConnectionPool:
         self._health_check_task: Optional[asyncio.Task] = None
         self._state = ConnectionState.DISCONNECTED
         self._initialized = False
-        
+
         endpoint_urls = endpoints or [config.get("solana.rpc_url", "https://api.mainnet-beta.solana.com")]
         for url in endpoint_urls:
             self._endpoints.append(RPCEndpoint(url=url))
             self._connections[url] = []
             self._connection_semaphores[url] = asyncio.Semaphore(max_connections_per_endpoint)
-    
+
     @property
     def state(self) -> ConnectionState:
         return self._state
-    
+
     @property
     def healthy_endpoints(self) -> List[RPCEndpoint]:
         return [ep for ep in self._endpoints if ep.is_healthy]
-    
+
     async def initialize(self) -> None:
         if self._initialized:
             return
-        
+
         self._state = ConnectionState.CONNECTING
         logger.info("Initializing RPC connection pool...")
-        
+
         try:
             await self._check_all_health()
-            
+
             if not self.healthy_endpoints:
                 raise RPCConnectionError("No healthy RPC endpoints available")
-            
+
             self._health_check_task = asyncio.create_task(self._health_check_loop())
-            
+
             self._state = ConnectionState.CONNECTED
             self._initialized = True
             logger.info(f"RPC connection pool initialized with {len(self.healthy_endpoints)} healthy endpoints")
-            
+
         except Exception as e:
             self._state = ConnectionState.FAILED
             logger.error(f"Failed to initialize connection pool: {e}")
             raise RPCConnectionError(f"Failed to initialize: {e}")
-    
+
     async def close(self) -> None:
         logger.info("Closing RPC connection pool...")
-        
+
         if self._health_check_task:
             self._health_check_task.cancel()
             try:
                 await self._health_check_task
             except asyncio.CancelledError:
                 pass
-        
+
         for url, clients in self._connections.items():
             for client in clients:
                 try:
@@ -321,15 +321,15 @@ class RPCConnectionPool:
                 except Exception as e:
                     logger.warning(f"Error closing client for {url}: {e}")
             clients.clear()
-        
+
         self._state = ConnectionState.DISCONNECTED
         self._initialized = False
         logger.info("RPC connection pool closed")
-    
+
     async def _check_all_health(self) -> None:
         tasks = [self._check_endpoint_health(ep) for ep in self._endpoints]
         await asyncio.gather(*tasks, return_exceptions=True)
-    
+
     async def _check_endpoint_health(self, endpoint: RPCEndpoint) -> None:
         try:
             start = time.monotonic()
@@ -338,22 +338,22 @@ class RPCConnectionPool:
                     client.get_slot(),
                     timeout=self._connection_timeout
                 )
-                
+
                 if hasattr(response, 'value') and response.value:
                     endpoint.is_healthy = True
                     endpoint.consecutive_failures = 0
                     endpoint.latency_ms = (time.monotonic() - start) * 1000
                 else:
                     raise RPCError("Invalid response from endpoint")
-                    
+
         except Exception as e:
             endpoint.consecutive_failures += 1
             if endpoint.consecutive_failures >= 3:
                 endpoint.is_healthy = False
             logger.warning(f"Health check failed for {endpoint.url}: {e}")
-        
+
         endpoint.last_check = datetime.now(timezone.utc)
-    
+
     async def _health_check_loop(self) -> None:
         while True:
             try:
@@ -363,53 +363,53 @@ class RPCConnectionPool:
                 break
             except Exception as e:
                 logger.error(f"Health check loop error: {e}")
-    
+
     def _get_next_endpoint(self) -> RPCEndpoint:
         healthy = self.healthy_endpoints
         if not healthy:
             if self._endpoints:
                 return self._endpoints[0]
             raise RPCConnectionError("No RPC endpoints configured")
-        
+
         self._current_endpoint_idx = (self._current_endpoint_idx + 1) % len(healthy)
         return healthy[self._current_endpoint_idx]
-    
+
     @asynccontextmanager
     async def get_client(self) -> AsyncClient:
         if not self._initialized:
             await self.initialize()
-        
+
         endpoint = self._get_next_endpoint()
-        
+
         async with self._connection_semaphores[endpoint.url]:
             async with self._lock:
                 if self._connections[endpoint.url]:
                     client = self._connections[endpoint.url].pop()
                 else:
                     client = None
-            
+
             if client is None:
                 client = AsyncClient(
                     endpoint.url,
                     timeout=self._connection_timeout,
                 )
-            
+
             try:
                 yield client
-                
+
                 async with self._lock:
                     if len(self._connections[endpoint.url]) < self._max_connections:
                         self._connections[endpoint.url].append(client)
                     else:
                         await client.close()
-                        
+
             except Exception as e:
                 try:
                     await client.close()
                 except Exception:
                     pass
                 raise
-    
+
     async def execute_with_retry(
         self,
         operation: str,
@@ -419,7 +419,7 @@ class RPCConnectionPool:
         **kwargs
     ) -> Any:
         last_error = None
-        
+
         for attempt in range(max_retries):
             try:
                 async with self.get_client() as client:
@@ -428,22 +428,22 @@ class RPCConnectionPool:
                         timeout=self._connection_timeout * 2
                     )
                     return result
-                    
+
             except asyncio.TimeoutError as e:
                 last_error = RPCTimeoutError(f"{operation} timed out")
                 logger.warning(f"{operation} attempt {attempt + 1} timed out")
-                
+
             except Exception as e:
                 last_error = e
                 logger.warning(f"{operation} attempt {attempt + 1} failed: {e}")
-            
+
             if attempt < max_retries - 1:
                 await asyncio.sleep(0.5 * (2 ** attempt))
-        
+
         raise RPCError(f"{operation} failed after {max_retries} attempts: {last_error}")
 
 class AsyncWalletManager:
-    
+
     def __init__(
         self,
         encryption_manager: Optional[EncryptionManager] = None,
@@ -456,55 +456,55 @@ class AsyncWalletManager:
         if not master_secret:
             logger.warning("No encryption key configured - using development key")
             master_secret = "development_key_do_not_use_in_production_" + "x" * 32
-        
+
         self._encryption = encryption_manager or EncryptionManager(master_secret)
         self._pool = connection_pool or RPCConnectionPool()
         self._storage = storage_backend
-        
+
         self._wallets: Dict[int, Dict[str, Dict[str, Any]]] = {}
         self._wallet_lock = asyncio.Lock()
-        
+
         self._user_locks: Dict[int, asyncio.Lock] = {}
-        
+
         self._initialized = False
-    
+
     async def initialize(self) -> None:
         if self._initialized:
             return
-        
+
         logger.info("Initializing AsyncWalletManager...")
         await self._pool.initialize()
         self._initialized = True
         logger.info("AsyncWalletManager initialized")
-    
+
     async def close(self) -> None:
         logger.info("Closing AsyncWalletManager...")
         await self._pool.close()
         self._encryption.clear_cache()
         self._initialized = False
         logger.info("AsyncWalletManager closed")
-    
+
     async def _get_user_lock(self, telegram_id: int) -> asyncio.Lock:
         async with self._wallet_lock:
             if telegram_id not in self._user_locks:
                 self._user_locks[telegram_id] = asyncio.Lock()
             return self._user_locks[telegram_id]
-    
+
     def _validate_wallet_name(self, wallet_name: str) -> None:
         if not wallet_name or not isinstance(wallet_name, str):
             raise WalletError("Wallet name is required")
-        
+
         if len(wallet_name) > 32:
             raise WalletError("Wallet name must be 32 characters or less")
-        
+
         if not wallet_name.replace("_", "").replace("-", "").isalnum():
             raise WalletError("Wallet name can only contain letters, numbers, underscores, and hyphens")
-    
+
     async def _count_user_wallets(self, telegram_id: int) -> int:
         if telegram_id not in self._wallets:
             return 0
         return len(self._wallets[telegram_id])
-    
+
     async def generate_wallet(
         self,
         telegram_id: int,
@@ -513,27 +513,27 @@ class AsyncWalletManager:
         set_as_default: bool = False,
     ) -> WalletInfo:
         self._validate_wallet_name(wallet_name)
-        
+
         user_lock = await self._get_user_lock(telegram_id)
         async with user_lock:
             if await self._count_user_wallets(telegram_id) >= MAX_WALLETS_PER_USER:
                 raise WalletLimitExceededError(
                     f"Maximum {MAX_WALLETS_PER_USER} wallets per user"
                 )
-            
+
             if telegram_id in self._wallets and wallet_name in self._wallets[telegram_id]:
                 raise WalletExistsError(f"Wallet '{wallet_name}' already exists")
-            
+
             keypair = Keypair()
             public_key = str(keypair.pubkey())
             private_key = bytes(keypair)
-            
+
             try:
                 encrypted_key = await self._encryption.encrypt(
                     private_key,
                     telegram_id
                 )
-                
+
                 now = datetime.now(timezone.utc)
                 wallet_info = WalletInfo(
                     public_key=public_key,
@@ -543,22 +543,22 @@ class AsyncWalletManager:
                     is_default=set_as_default,
                     label=label,
                 )
-                
+
                 if telegram_id not in self._wallets:
                     self._wallets[telegram_id] = {}
-                
+
                 self._wallets[telegram_id][wallet_name] = {
                     "info": wallet_info.to_dict(),
                     "encrypted_key": base64.b64encode(encrypted_key).decode(),
                     "version": WALLET_DATA_VERSION,
                 }
-                
+
                 if set_as_default:
                     await self._set_default_internal(telegram_id, wallet_name)
-                
+
                 logger.info(f"Generated wallet '{wallet_name}' for user {telegram_id}")
                 return wallet_info
-                
+
             finally:
                 private_key_ba = bytearray(private_key)
                 for i in range(len(private_key_ba)):
@@ -573,7 +573,7 @@ class AsyncWalletManager:
         set_as_default: bool = False,
     ) -> WalletInfo:
         self._validate_wallet_name(wallet_name)
-        
+
         key_bytes: bytes
         try:
             if isinstance(private_key, str):
@@ -583,36 +583,36 @@ class AsyncWalletManager:
                 key_bytes = bytes(private_key)
             else:
                 key_bytes = private_key
-            
+
             keypair = Keypair.from_bytes(key_bytes)
             public_key = str(keypair.pubkey())
-            
+
         except Exception as e:
             raise InvalidPrivateKeyError(f"Invalid private key format: {e}")
-        
+
         user_lock = await self._get_user_lock(telegram_id)
         async with user_lock:
             if await self._count_user_wallets(telegram_id) >= MAX_WALLETS_PER_USER:
                 raise WalletLimitExceededError(
                     f"Maximum {MAX_WALLETS_PER_USER} wallets per user"
                 )
-            
+
             if telegram_id in self._wallets and wallet_name in self._wallets[telegram_id]:
                 raise WalletExistsError(f"Wallet '{wallet_name}' already exists")
-            
+
             if telegram_id in self._wallets:
                 for existing_wallet in self._wallets[telegram_id].values():
                     if existing_wallet["info"]["public_key"] == public_key:
                         raise WalletExistsError(
                             f"Wallet with this public key already exists"
                         )
-            
+
             try:
                 encrypted_key = await self._encryption.encrypt(
                     key_bytes,
                     telegram_id
                 )
-                
+
                 now = datetime.now(timezone.utc)
                 wallet_info = WalletInfo(
                     public_key=public_key,
@@ -622,27 +622,27 @@ class AsyncWalletManager:
                     is_default=set_as_default,
                     label=label,
                 )
-                
+
                 if telegram_id not in self._wallets:
                     self._wallets[telegram_id] = {}
-                
+
                 self._wallets[telegram_id][wallet_name] = {
                     "info": wallet_info.to_dict(),
                     "encrypted_key": base64.b64encode(encrypted_key).decode(),
                     "version": WALLET_DATA_VERSION,
                 }
-                
+
                 if set_as_default:
                     await self._set_default_internal(telegram_id, wallet_name)
-                
+
                 logger.info(f"Imported wallet '{wallet_name}' for user {telegram_id}")
                 return wallet_info
-                
+
             finally:
                 key_bytes_ba = bytearray(key_bytes)
                 for i in range(len(key_bytes_ba)):
                     key_bytes_ba[i] = 0
-    
+
     async def export_wallet(
         self,
         telegram_id: int,
@@ -653,13 +653,13 @@ class AsyncWalletManager:
         async with user_lock:
             if telegram_id not in self._wallets or wallet_name not in self._wallets[telegram_id]:
                 raise WalletNotFoundError(f"Wallet '{wallet_name}' not found")
-            
+
             wallet_data = self._wallets[telegram_id][wallet_name]
-            
+
             encrypted_key = base64.b64decode(wallet_data["encrypted_key"])
-            
+
             private_key = await self._encryption.decrypt(encrypted_key, telegram_id)
-            
+
             try:
                 if export_password:
                     export_data = await self._encryption.encrypt(
@@ -669,7 +669,7 @@ class AsyncWalletManager:
                     )
                 else:
                     export_data = encrypted_key
-                
+
                 export_package = {
                     "version": BACKUP_VERSION,
                     "wallet_name": wallet_name,
@@ -678,10 +678,10 @@ class AsyncWalletManager:
                     "exported_at": datetime.now(timezone.utc).isoformat(),
                     "password_protected": export_password is not None,
                 }
-                
+
                 logger.info(f"Exported wallet '{wallet_name}' for user {telegram_id}")
                 return json.dumps(export_package).encode()
-                
+
             finally:
                 private_key_ba = bytearray(private_key)
                 for i in range(len(private_key_ba)):
@@ -694,31 +694,31 @@ class AsyncWalletManager:
     ) -> Optional[WalletInfo]:
         if telegram_id not in self._wallets:
             return None
-        
+
         if wallet_name is None:
             for data in self._wallets[telegram_id].values():
                 if data["info"].get("is_default"):
                     return WalletInfo.from_dict(data["info"])
-            
+
             if self._wallets[telegram_id]:
                 first_wallet = next(iter(self._wallets[telegram_id].values()))
                 return WalletInfo.from_dict(first_wallet["info"])
             return None
-        
+
         if wallet_name not in self._wallets[telegram_id]:
             return None
-        
+
         return WalletInfo.from_dict(self._wallets[telegram_id][wallet_name]["info"])
-    
+
     async def list_wallets(self, telegram_id: int) -> List[WalletInfo]:
         if telegram_id not in self._wallets:
             return []
-        
+
         return [
             WalletInfo.from_dict(data["info"])
             for data in self._wallets[telegram_id].values()
         ]
-    
+
     async def delete_wallet(
         self,
         telegram_id: int,
@@ -727,25 +727,25 @@ class AsyncWalletManager:
     ) -> bool:
         if not confirm:
             raise WalletError("Must confirm wallet deletion")
-        
+
         user_lock = await self._get_user_lock(telegram_id)
         async with user_lock:
             if telegram_id not in self._wallets or wallet_name not in self._wallets[telegram_id]:
                 raise WalletNotFoundError(f"Wallet '{wallet_name}' not found")
-            
+
             wallet_data = self._wallets[telegram_id].pop(wallet_name)
-            
+
             if "encrypted_key" in wallet_data:
                 encrypted_key = wallet_data["encrypted_key"]
                 wallet_data["encrypted_key"] = "0" * len(encrypted_key)
-            
+
             logger.info(f"Deleted wallet '{wallet_name}' for user {telegram_id}")
-            
+
             if not self._wallets[telegram_id]:
                 del self._wallets[telegram_id]
-            
+
             return True
-    
+
     async def set_default_wallet(
         self,
         telegram_id: int,
@@ -755,16 +755,16 @@ class AsyncWalletManager:
         async with user_lock:
             if telegram_id not in self._wallets or wallet_name not in self._wallets[telegram_id]:
                 raise WalletNotFoundError(f"Wallet '{wallet_name}' not found")
-            
+
             await self._set_default_internal(telegram_id, wallet_name)
             return WalletInfo.from_dict(self._wallets[telegram_id][wallet_name]["info"])
-    
+
     async def _set_default_internal(self, telegram_id: int, wallet_name: str) -> None:
         for data in self._wallets[telegram_id].values():
             data["info"]["is_default"] = False
-        
+
         self._wallets[telegram_id][wallet_name]["info"]["is_default"] = True
-    
+
     async def _get_keypair(
         self,
         telegram_id: int,
@@ -775,12 +775,12 @@ class AsyncWalletManager:
             raise WalletNotFoundError(
                 f"Wallet '{wallet_name or 'default'}' not found"
             )
-        
+
         wallet_data = self._wallets[telegram_id][wallet_info.wallet_name]
         encrypted_key = base64.b64decode(wallet_data["encrypted_key"])
-        
+
         private_key = await self._encryption.decrypt(encrypted_key, telegram_id)
-        
+
         try:
             return Keypair.from_bytes(private_key)
         finally:
@@ -794,54 +794,54 @@ class AsyncWalletManager:
     ) -> Tuple[int, float]:
         if not self._initialized:
             await self.initialize()
-        
+
         pubkey = Pubkey.from_string(str(public_key)) if isinstance(public_key, str) else public_key
-        
+
         async def _get_balance(client: AsyncClient) -> Tuple[int, float]:
             response = await client.get_balance(pubkey, commitment=Confirmed)
             lamports = response.value
             sol_amount = lamports / LAMPORTS_PER_SOL
             return lamports, sol_amount
-        
+
         return await self._pool.execute_with_retry(
             "get_sol_balance",
             _get_balance
         )
-    
+
     async def get_token_balances(
         self,
         public_key: Union[str, Pubkey],
     ) -> List[TokenBalance]:
         if not self._initialized:
             await self.initialize()
-        
+
         pubkey = Pubkey.from_string(str(public_key)) if isinstance(public_key, str) else public_key
-        
+
         async def _get_token_accounts(client: AsyncClient) -> List[TokenBalance]:
             from solana.rpc.types import TokenAccountOpts
             from solders.pubkey import Pubkey as SoldersPubkey
-            
+
             token_program = SoldersPubkey.from_string(
                 "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
             )
-            
+
             response = await client.get_token_accounts_by_owner(
                 pubkey,
                 TokenAccountOpts(program_id=token_program),
                 commitment=Confirmed,
             )
-            
+
             balances = []
             if response.value:
                 for account in response.value:
                     try:
                         account_data = account.account.data
-                        
+
                         if hasattr(account_data, 'parsed'):
                             parsed = account_data.parsed
                             info = parsed.get("info", {})
                             token_amount = info.get("tokenAmount", {})
-                            
+
                             balances.append(TokenBalance(
                                 mint=info.get("mint", ""),
                                 balance=int(token_amount.get("amount", 0)),
@@ -851,14 +851,14 @@ class AsyncWalletManager:
                     except Exception as e:
                         logger.warning(f"Failed to parse token account: {e}")
                         continue
-            
+
             return balances
-        
+
         return await self._pool.execute_with_retry(
             "get_token_balances",
             _get_token_accounts
         )
-    
+
     async def get_token_balance(
         self,
         public_key: Union[str, Pubkey],
@@ -866,25 +866,25 @@ class AsyncWalletManager:
     ) -> Optional[TokenBalance]:
         balances = await self.get_token_balances(public_key)
         mint_str = str(mint)
-        
+
         for balance in balances:
             if balance.mint == mint_str:
                 return balance
-        
+
         return None
-    
+
     async def get_full_balance(
         self,
         public_key: Union[str, Pubkey],
     ) -> BalanceResult:
         sol_task = self.get_sol_balance(public_key)
         tokens_task = self.get_token_balances(public_key)
-        
+
         (lamports, sol_amount), token_balances = await asyncio.gather(
             sol_task,
             tokens_task
         )
-        
+
         return BalanceResult(
             sol_balance=lamports,
             sol_ui_amount=sol_amount,
@@ -898,18 +898,18 @@ class AsyncWalletManager:
     ) -> bytes:
         if not backup_password or len(backup_password) < 8:
             raise BackupError("Backup password must be at least 8 characters")
-        
+
         user_lock = await self._get_user_lock(telegram_id)
         async with user_lock:
             if telegram_id not in self._wallets or not self._wallets[telegram_id]:
                 raise BackupError("No wallets to backup")
-            
+
             wallets_data = []
             for wallet_name, wallet_data in self._wallets[telegram_id].items():
                 encrypted_key = base64.b64decode(wallet_data["encrypted_key"])
-                
+
                 private_key = await self._encryption.decrypt(encrypted_key, telegram_id)
-                
+
                 try:
                     wallets_data.append({
                         "wallet_name": wallet_name,
@@ -923,7 +923,7 @@ class AsyncWalletManager:
                     private_key_ba = bytearray(private_key)
                     for i in range(len(private_key_ba)):
                         private_key_ba[i] = 0
-            
+
             backup = {
                 "version": BACKUP_VERSION,
                 "created_at": datetime.now(timezone.utc).isoformat(),
@@ -931,24 +931,24 @@ class AsyncWalletManager:
                 "wallet_count": len(wallets_data),
                 "wallets": wallets_data,
             }
-            
+
             backup_json = json.dumps(backup).encode()
-            
+
             try:
                 encrypted_backup = await self._encryption.encrypt(
                     backup_json,
                     telegram_id,
                     additional_password=backup_password
                 )
-                
+
                 header = b"SOLBOT_BACKUP_V1"
                 return header + encrypted_backup
-                
+
             finally:
                 for wallet in wallets_data:
                     if "private_key" in wallet:
                         wallet["private_key"] = "0" * len(wallet["private_key"])
-    
+
     async def restore_from_backup(
         self,
         telegram_id: int,
@@ -959,50 +959,50 @@ class AsyncWalletManager:
         header = b"SOLBOT_BACKUP_V1"
         if not backup_data.startswith(header):
             raise RestoreError("Invalid backup format")
-        
+
         encrypted_data = backup_data[len(header):]
-        
+
         try:
             backup_json = await self._encryption.decrypt(
                 encrypted_data,
                 telegram_id,
                 additional_password=backup_password
             )
-            
+
             backup = json.loads(backup_json.decode())
-            
+
         except DecryptionError:
             raise RestoreError("Invalid backup password")
         except json.JSONDecodeError:
             raise RestoreError("Corrupted backup data")
-        
+
         if backup.get("version") != BACKUP_VERSION:
             raise RestoreError(f"Unsupported backup version: {backup.get('version')}")
-        
+
         restored = []
         user_lock = await self._get_user_lock(telegram_id)
-        
+
         async with user_lock:
             for wallet_data in backup.get("wallets", []):
                 wallet_name = wallet_data["wallet_name"]
-                
+
                 exists = (
-                    telegram_id in self._wallets and 
+                    telegram_id in self._wallets and
                     wallet_name in self._wallets[telegram_id]
                 )
-                
+
                 if exists and not overwrite:
                     logger.warning(f"Skipping existing wallet: {wallet_name}")
                     continue
-                
+
                 private_key = base64.b64decode(wallet_data["private_key"])
-                
+
                 try:
                     encrypted_key = await self._encryption.encrypt(
                         private_key,
                         telegram_id
                     )
-                    
+
                     wallet_info = WalletInfo(
                         public_key=wallet_data["public_key"],
                         wallet_name=wallet_name,
@@ -1011,23 +1011,23 @@ class AsyncWalletManager:
                         is_default=wallet_data.get("is_default", False),
                         label=wallet_data.get("label"),
                     )
-                    
+
                     if telegram_id not in self._wallets:
                         self._wallets[telegram_id] = {}
-                    
+
                     self._wallets[telegram_id][wallet_name] = {
                         "info": wallet_info.to_dict(),
                         "encrypted_key": base64.b64encode(encrypted_key).decode(),
                         "version": WALLET_DATA_VERSION,
                     }
-                    
+
                     restored.append(wallet_info)
-                    
+
                 finally:
                     private_key_ba = bytearray(private_key)
                     for i in range(len(private_key_ba)):
                         private_key_ba[i] = 0
-        
+
         logger.info(f"Restored {len(restored)} wallets for user {telegram_id}")
         return restored
 
@@ -1036,17 +1036,17 @@ _wallet_manager_lock = asyncio.Lock()
 
 async def get_wallet_manager() -> AsyncWalletManager:
     global _wallet_manager
-    
+
     async with _wallet_manager_lock:
         if _wallet_manager is None:
             _wallet_manager = AsyncWalletManager()
             await _wallet_manager.initialize()
-        
+
         return _wallet_manager
 
 async def close_wallet_manager() -> None:
     global _wallet_manager
-    
+
     async with _wallet_manager_lock:
         if _wallet_manager is not None:
             await _wallet_manager.close()
