@@ -141,10 +141,10 @@ Copy `.env.example` to `.env` and configure:
 
 | Variable | Description | Required |
 |----------|-------------|:--------:|
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | Yes |
-| `SOLANA_RPC_URL` | RPC endpoint URL | Yes |
-| `ENCRYPTION_SECRET` | 64-char hex for wallet encryption | Yes |
-| `ENCRYPTION_SALT` | 32-char hex for key derivation | Yes |
+| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | [DONE] |
+| `SOLANA_RPC_URL` | RPC endpoint URL | [DONE] |
+| `ENCRYPTION_SECRET` | 64-char hex for wallet encryption | [DONE] |
+| `ENCRYPTION_SALT` | 32-char hex for key derivation | [DONE] |
 | `PAPER_TRADING` | Start in simulation mode | - |
 | `PLATFORM_FEE_PERCENT` | Fee percentage (default: 0.5) | - |
 
@@ -245,7 +245,7 @@ For production, use a paid RPC provider:
 
 ## Security Considerations
 
-> **Important**: This bot handles real funds. Review these points:
+> [!] **Important**: This bot handles real funds. Review these points:
 
 1. **Never share your `.env` file** - Contains encryption keys
 2. **Use paper trading first** - Test before real money
@@ -293,6 +293,6 @@ This software is provided for educational purposes. Trading cryptocurrencies inv
 
 **Built for the Solana ecosystem**
 
-If this project helped you, consider giving it a star!
+If this project helped you, consider giving it a *
 
 </div>
