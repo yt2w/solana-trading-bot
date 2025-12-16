@@ -1,0 +1,41 @@
+# SECRETS & CREDENTIALS
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+wallet*.json
+keystore/
+
+# DATABASE & STATE
+*.db
+*.sqlite
+data/
+
+# LOGS
+logs/
+*.log
+audit_logs/
+backups/
+
+# PYTHON
+__pycache__/
+*.py[cod]
+*.so
+venv/
+.venv/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
