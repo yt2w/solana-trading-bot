@@ -58,27 +58,27 @@ class DayOfWeek(Enum):
 class DCAConfig:
     """Configuration for a DCA plan."""
     plan_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: int = 0                    
-    token_mint: str = ""                             
-    token_symbol: str = ""                            
-    amount_per_buy: Decimal = Decimal("0.1")                    
+    user_id: int = 0
+    token_mint: str = ""
+    token_symbol: str = ""
+    amount_per_buy: Decimal = Decimal("0.1")
     frequency: DCAFrequency = DCAFrequency.DAILY
-    custom_interval_hours: Optional[int] = None                        
-    day_of_week: Optional[DayOfWeek] = None              
-    days_of_week: List[int] = field(default_factory=list)                    
-    time_of_day: str = "12:00"                
-    total_budget: Optional[Decimal] = None                          
-    max_executions: Optional[int] = None                      
-    end_date: Optional[datetime] = None                     
-    slippage_bps: int = 300                       
-    smart_timing: bool = True                          
-    max_priority_fee_lamports: int = 100000                                 
-    retry_on_high_fees: bool = True                          
-    safety_check_enabled: bool = True                                 
+    custom_interval_hours: Optional[int] = None
+    day_of_week: Optional[DayOfWeek] = None
+    days_of_week: List[int] = field(default_factory=list)
+    time_of_day: str = "12:00"
+    total_budget: Optional[Decimal] = None
+    max_executions: Optional[int] = None
+    end_date: Optional[datetime] = None
+    slippage_bps: int = 300
+    smart_timing: bool = True
+    max_priority_fee_lamports: int = 100000
+    retry_on_high_fees: bool = True
+    safety_check_enabled: bool = True
     status: DCAStatus = DCAStatus.PENDING
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
         data = asdict(self)
@@ -91,7 +91,7 @@ class DCAConfig:
         data['updated_at'] = self.updated_at.isoformat()
         data['end_date'] = self.end_date.isoformat() if self.end_date else None
         return data
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'DCAConfig':
         """Create from dictionary."""
@@ -123,7 +123,7 @@ class DCAStats:
     current_price_sol: Optional[Decimal] = None
     execution_count: int = 0
     failed_count: int = 0
-    skipped_count: int = 0                                  
+    skipped_count: int = 0
     total_fees_paid_sol: Decimal = Decimal("0")
     total_priority_fees_sol: Decimal = Decimal("0")
     first_execution: Optional[datetime] = None
@@ -131,7 +131,7 @@ class DCAStats:
     next_execution: Optional[datetime] = None
     unrealized_pnl_sol: Decimal = Decimal("0")
     unrealized_pnl_percent: Decimal = Decimal("0")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -172,11 +172,11 @@ class DCAExecution:
     tx_signature: Optional[str] = None
     priority_fee_lamports: int = 0
     network_fee_lamports: int = 5000
-    status: str = "pending"                                     
+    status: str = "pending"
     error_message: Optional[str] = None
     retry_count: int = 0
     executed_at: datetime = field(default_factory=datetime.utcnow)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -201,11 +201,11 @@ class DCAExecution:
 
 class DCAScheduler:
     """Handles scheduling of DCA executions."""
-    
+
     def __init__(self):
         self._tasks: Dict[str, asyncio.Task] = {}
         self._next_executions: Dict[str, datetime] = {}
-    
+
     def calculate_next_execution(
         self,
         config: DCAConfig,
@@ -213,28 +213,28 @@ class DCAScheduler:
     ) -> Optional[datetime]:
         """Calculate the next execution time for a plan."""
         now = from_time or datetime.utcnow()
-        
-                           
+
+
         try:
             hour, minute = map(int, config.time_of_day.split(':'))
         except:
             hour, minute = 12, 0
-        
+
         if config.frequency == DCAFrequency.HOURLY:
-                                               
+
             next_exec = now.replace(minute=minute, second=0, microsecond=0)
             if next_exec <= now:
                 next_exec += timedelta(hours=1)
-                
+
         elif config.frequency == DCAFrequency.EVERY_4_HOURS:
             next_exec = now.replace(minute=minute, second=0, microsecond=0)
-                                                                 
+
             target_hour = ((now.hour // 4) + 1) * 4
             if target_hour >= 24:
                 next_exec = next_exec.replace(hour=0) + timedelta(days=1)
             else:
                 next_exec = next_exec.replace(hour=target_hour)
-                
+
         elif config.frequency == DCAFrequency.EVERY_8_HOURS:
             next_exec = now.replace(minute=minute, second=0, microsecond=0)
             target_hour = ((now.hour // 8) + 1) * 8
@@ -242,7 +242,7 @@ class DCAScheduler:
                 next_exec = next_exec.replace(hour=0) + timedelta(days=1)
             else:
                 next_exec = next_exec.replace(hour=target_hour)
-                
+
         elif config.frequency == DCAFrequency.EVERY_12_HOURS:
             next_exec = now.replace(minute=minute, second=0, microsecond=0)
             target_hour = ((now.hour // 12) + 1) * 12
@@ -250,76 +250,76 @@ class DCAScheduler:
                 next_exec = next_exec.replace(hour=0) + timedelta(days=1)
             else:
                 next_exec = next_exec.replace(hour=target_hour)
-                
+
         elif config.frequency == DCAFrequency.DAILY:
             next_exec = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if next_exec <= now:
                 next_exec += timedelta(days=1)
-                
+
         elif config.frequency == DCAFrequency.TWICE_WEEKLY:
-                                                             
+
             days = config.days_of_week if config.days_of_week else [0, 3]
             next_exec = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            
-                                 
+
+
             for i in range(8):
                 check_date = next_exec + timedelta(days=i)
                 if check_date.weekday() in days and check_date > now:
                     next_exec = check_date
                     break
-                    
+
         elif config.frequency == DCAFrequency.WEEKLY:
             target_day = config.day_of_week.value if config.day_of_week else 0
             next_exec = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            
+
             days_ahead = target_day - now.weekday()
             if days_ahead <= 0 or (days_ahead == 0 and next_exec <= now):
                 days_ahead += 7
             next_exec += timedelta(days=days_ahead)
-            
+
         elif config.frequency == DCAFrequency.BIWEEKLY:
             target_day = config.day_of_week.value if config.day_of_week else 0
             next_exec = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            
+
             days_ahead = target_day - now.weekday()
             if days_ahead <= 0 or (days_ahead == 0 and next_exec <= now):
                 days_ahead += 14
             else:
-                days_ahead += 7                               
+                days_ahead += 7
             next_exec += timedelta(days=days_ahead)
-            
+
         elif config.frequency == DCAFrequency.MONTHLY:
             next_exec = now.replace(
                 day=1, hour=hour, minute=minute, second=0, microsecond=0
             )
             if next_exec <= now:
-                                    
+
                 if next_exec.month == 12:
                     next_exec = next_exec.replace(year=next_exec.year + 1, month=1)
                 else:
                     next_exec = next_exec.replace(month=next_exec.month + 1)
-                    
+
         elif config.frequency == DCAFrequency.CUSTOM:
             interval_hours = config.custom_interval_hours or 24
             next_exec = now + timedelta(hours=interval_hours)
-            
+
         else:
             next_exec = now + timedelta(days=1)
-        
-                                
+
+
         if config.end_date and next_exec > config.end_date:
             return None
-            
+
         return next_exec
-    
+
     def get_next_execution(self, plan_id: str) -> Optional[datetime]:
         """Get scheduled next execution time."""
         return self._next_executions.get(plan_id)
-    
+
     def set_next_execution(self, plan_id: str, next_time: datetime):
         """Set next execution time."""
         self._next_executions[plan_id] = next_time
-    
+
     def clear_schedule(self, plan_id: str):
         """Clear scheduled execution."""
         self._next_executions.pop(plan_id, None)
@@ -333,7 +333,7 @@ class DCAEngine:
     Main DCA (Dollar Cost Averaging) Engine.
     Manages multiple concurrent DCA plans with background scheduling.
     """
-    
+
     def __init__(
         self,
         db_path: str = "data/dca_engine.db",
@@ -344,12 +344,12 @@ class DCAEngine:
     ):
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         self.jupiter = jupiter_client
         self.wallet_manager = wallet_manager
         self.token_analyzer = token_analyzer
         self.notify = notification_callback
-        
+
         self.scheduler = DCAScheduler()
         self._plans: Dict[str, DCAConfig] = {}
         self._stats: Dict[str, DCAStats] = {}
@@ -357,26 +357,26 @@ class DCAEngine:
         self._scheduler_task: Optional[asyncio.Task] = None
         self._execution_lock = asyncio.Lock()
         self._plan_locks: Dict[str, asyncio.Lock] = defaultdict(asyncio.Lock)
-        
-                       
+
+
         self.max_retries = 3
         self.retry_delay_seconds = 30
-        self.high_fee_threshold_lamports = 50000               
+        self.high_fee_threshold_lamports = 50000
         self.high_fee_delay_minutes = 5
         self.max_concurrent_executions = 5
-        
+
         logger.info("DCA Engine initialized")
-    
+
     async def initialize(self):
         """Initialize the DCA engine and database."""
         await self._init_database()
         await self._load_plans()
         logger.info(f"DCA Engine initialized with {len(self._plans)} plans")
-    
+
     async def _init_database(self):
         """Initialize database tables."""
         async with aiosqlite.connect(self.db_path) as db:
-                             
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS dca_plans (
                     plan_id TEXT PRIMARY KEY,
@@ -386,8 +386,8 @@ class DCAEngine:
                     updated_at TEXT NOT NULL
                 )
             """)
-            
-                                  
+
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS dca_stats (
                     plan_id TEXT PRIMARY KEY,
@@ -396,8 +396,8 @@ class DCAEngine:
                     FOREIGN KEY (plan_id) REFERENCES dca_plans(plan_id)
                 )
             """)
-            
-                                  
+
+
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS dca_executions (
                     execution_id TEXT PRIMARY KEY,
@@ -408,8 +408,8 @@ class DCAEngine:
                     FOREIGN KEY (plan_id) REFERENCES dca_plans(plan_id)
                 )
             """)
-            
-                     
+
+
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_plans_user ON dca_plans(user_id)"
             )
@@ -419,10 +419,10 @@ class DCAEngine:
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_executions_user ON dca_executions(user_id)"
             )
-            
+
             await db.commit()
             logger.info("DCA database initialized")
-    
+
     async def _load_plans(self):
         """Load all plans from database."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -433,8 +433,8 @@ class DCAEngine:
                     try:
                         config = DCAConfig.from_dict(json.loads(row[1]))
                         self._plans[config.plan_id] = config
-                        
-                                    
+
+
                         async with db.execute(
                             "SELECT stats_json FROM dca_stats WHERE plan_id = ?",
                             (config.plan_id,)
@@ -445,10 +445,10 @@ class DCAEngine:
                                 self._stats[config.plan_id] = self._parse_stats(stats_data)
                             else:
                                 self._stats[config.plan_id] = DCAStats(plan_id=config.plan_id)
-                                
+
                     except Exception as e:
                         logger.error(f"Failed to load plan {row[0]}: {e}")
-    
+
     def _parse_stats(self, data: Dict) -> DCAStats:
         """Parse stats from dictionary."""
         return DCAStats(
@@ -472,7 +472,7 @@ class DCAEngine:
             unrealized_pnl_sol=Decimal(data.get('unrealized_pnl_sol', '0')),
             unrealized_pnl_percent=Decimal(data.get('unrealized_pnl_percent', '0')),
         )
-    
+
     async def _save_plan(self, config: DCAConfig):
         """Save plan to database."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -487,7 +487,7 @@ class DCAEngine:
                 datetime.utcnow().isoformat()
             ))
             await db.commit()
-    
+
     async def _save_stats(self, stats: DCAStats):
         """Save stats to database."""
         async with aiosqlite.connect(self.db_path) as db:
@@ -500,12 +500,12 @@ class DCAEngine:
                 datetime.utcnow().isoformat()
             ))
             await db.commit()
-    
+
     async def _save_execution(self, execution: DCAExecution):
         """Save execution to database."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT OR REPLACE INTO dca_executions 
+                INSERT OR REPLACE INTO dca_executions
                 (execution_id, plan_id, user_id, execution_json, executed_at)
                 VALUES (?, ?, ?, ?, ?)
             """, (
@@ -517,11 +517,7 @@ class DCAEngine:
             ))
             await db.commit()
 
-    
-                                                                               
-                     
-                                                                               
-    
+
     async def create_plan(
         self,
         user_id: int,
@@ -554,30 +550,30 @@ class DCAEngine:
             smart_timing=smart_timing,
             status=DCAStatus.ACTIVE if auto_start else DCAStatus.PENDING
         )
-        
-                                   
+
+
         next_exec = self.scheduler.calculate_next_execution(config)
-        
-                          
+
+
         stats = DCAStats(plan_id=config.plan_id, next_execution=next_exec)
-        
-                                      
+
+
         self._plans[config.plan_id] = config
         self._stats[config.plan_id] = stats
-        
+
         await self._save_plan(config)
         await self._save_stats(stats)
-        
-                            
+
+
         if config.status == DCAStatus.ACTIVE and next_exec:
             self.scheduler.set_next_execution(config.plan_id, next_exec)
-        
+
         logger.info(
             f"Created DCA plan {config.plan_id} for user {user_id}: "
             f"{amount_per_buy} SOL -> {token_symbol} ({frequency.value})"
         )
-        
-                     
+
+
         if self.notify:
             await self.notify(user_id, "dca_created", {
                 'plan_id': config.plan_id,
@@ -586,94 +582,94 @@ class DCAEngine:
                 'frequency': frequency.value,
                 'next_execution': next_exec.isoformat() if next_exec else None
             })
-        
+
         return config
-    
+
     async def pause_plan(self, plan_id: str) -> bool:
         """Pause a DCA plan."""
         if plan_id not in self._plans:
             logger.warning(f"Plan {plan_id} not found")
             return False
-        
+
         config = self._plans[plan_id]
         if config.status != DCAStatus.ACTIVE:
             logger.warning(f"Plan {plan_id} is not active (status: {config.status})")
             return False
-        
+
         config.status = DCAStatus.PAUSED
         config.updated_at = datetime.utcnow()
-        
+
         self.scheduler.clear_schedule(plan_id)
         await self._save_plan(config)
-        
+
         logger.info(f"Paused DCA plan {plan_id}")
-        
+
         if self.notify:
             await self.notify(config.user_id, "dca_paused", {
                 'plan_id': plan_id,
                 'token': config.token_symbol
             })
-        
+
         return True
-    
+
     async def resume_plan(self, plan_id: str) -> bool:
         """Resume a paused DCA plan."""
         if plan_id not in self._plans:
             logger.warning(f"Plan {plan_id} not found")
             return False
-        
+
         config = self._plans[plan_id]
         if config.status != DCAStatus.PAUSED:
             logger.warning(f"Plan {plan_id} is not paused (status: {config.status})")
             return False
-        
+
         config.status = DCAStatus.ACTIVE
         config.updated_at = datetime.utcnow()
-        
-                                    
+
+
         next_exec = self.scheduler.calculate_next_execution(config)
         if next_exec:
             self.scheduler.set_next_execution(plan_id, next_exec)
             self._stats[plan_id].next_execution = next_exec
             await self._save_stats(self._stats[plan_id])
-        
+
         await self._save_plan(config)
-        
+
         logger.info(f"Resumed DCA plan {plan_id}, next execution: {next_exec}")
-        
+
         if self.notify:
             await self.notify(config.user_id, "dca_resumed", {
                 'plan_id': plan_id,
                 'token': config.token_symbol,
                 'next_execution': next_exec.isoformat() if next_exec else None
             })
-        
+
         return True
-    
+
     async def cancel_plan(self, plan_id: str) -> bool:
         """Cancel a DCA plan."""
         if plan_id not in self._plans:
             logger.warning(f"Plan {plan_id} not found")
             return False
-        
+
         config = self._plans[plan_id]
         config.status = DCAStatus.CANCELLED
         config.updated_at = datetime.utcnow()
-        
+
         self.scheduler.clear_schedule(plan_id)
         await self._save_plan(config)
-        
+
         logger.info(f"Cancelled DCA plan {plan_id}")
-        
+
         if self.notify:
             await self.notify(config.user_id, "dca_cancelled", {
                 'plan_id': plan_id,
                 'token': config.token_symbol,
                 'stats': self._stats.get(plan_id, DCAStats()).to_dict()
             })
-        
+
         return True
-    
+
     async def modify_plan(
         self,
         plan_id: str,
@@ -688,10 +684,10 @@ class DCAEngine:
         if plan_id not in self._plans:
             logger.warning(f"Plan {plan_id} not found")
             return None
-        
+
         config = self._plans[plan_id]
-        
-                       
+
+
         if amount_per_buy is not None:
             config.amount_per_buy = amount_per_buy
         if frequency is not None:
@@ -704,24 +700,24 @@ class DCAEngine:
             config.slippage_bps = slippage_bps
         if smart_timing is not None:
             config.smart_timing = smart_timing
-        
+
         config.updated_at = datetime.utcnow()
-        
-                                                        
+
+
         if frequency is not None or time_of_day is not None:
             next_exec = self.scheduler.calculate_next_execution(config)
             if next_exec and config.status == DCAStatus.ACTIVE:
                 self.scheduler.set_next_execution(plan_id, next_exec)
                 self._stats[plan_id].next_execution = next_exec
                 await self._save_stats(self._stats[plan_id])
-        
+
         await self._save_plan(config)
-        
+
         logger.info(f"Modified DCA plan {plan_id}")
-        
+
         return config
 
-    
+
     async def list_plans(
         self,
         user_id: int,
@@ -730,43 +726,43 @@ class DCAEngine:
     ) -> List[Dict[str, Any]]:
         """List all DCA plans for a user."""
         plans = []
-        
+
         for plan_id, config in self._plans.items():
             if config.user_id != user_id:
                 continue
             if status_filter and config.status != status_filter:
                 continue
-            
+
             plan_data = config.to_dict()
-            
+
             if include_stats and plan_id in self._stats:
                 plan_data['stats'] = self._stats[plan_id].to_dict()
-            
+
             plans.append(plan_data)
-        
+
         return plans
-    
+
     async def get_plan_status(self, plan_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed status of a DCA plan."""
         if plan_id not in self._plans:
             return None
-        
+
         config = self._plans[plan_id]
         stats = self._stats.get(plan_id, DCAStats(plan_id=plan_id))
-        
-                                    
+
+
         remaining_budget = None
         if config.total_budget:
             remaining_budget = config.total_budget - stats.total_invested_sol
-        
-                                        
+
+
         remaining_executions = None
         if config.max_executions:
             remaining_executions = config.max_executions - stats.execution_count
-        
-                               
+
+
         recent_executions = await self._get_recent_executions(plan_id, limit=5)
-        
+
         return {
             'config': config.to_dict(),
             'stats': stats.to_dict(),
@@ -776,7 +772,7 @@ class DCAEngine:
             'is_active': config.status == DCAStatus.ACTIVE,
             'next_execution': self.scheduler.get_next_execution(plan_id)
         }
-    
+
     async def _get_recent_executions(
         self,
         plan_id: str,
@@ -792,88 +788,85 @@ class DCAEngine:
             """, (plan_id, limit)) as cursor:
                 rows = await cursor.fetchall()
                 return [json.loads(row[0]) for row in rows]
-    
-                                                                               
-                      
-                                                                               
-    
+
+
     async def start(self):
         """Start the DCA engine scheduler."""
         if self._running:
             logger.warning("DCA Engine already running")
             return
-        
+
         self._running = True
         self._scheduler_task = asyncio.create_task(self._scheduler_loop())
         logger.info("DCA Engine started")
-    
+
     async def stop(self):
         """Stop the DCA engine gracefully."""
         self._running = False
-        
+
         if self._scheduler_task:
             self._scheduler_task.cancel()
             try:
                 await self._scheduler_task
             except asyncio.CancelledError:
                 pass
-        
-                                   
+
+
         for plan_id in list(self.scheduler._tasks.keys()):
             self.scheduler.clear_schedule(plan_id)
-        
+
         logger.info("DCA Engine stopped")
-    
+
     async def _scheduler_loop(self):
         """Main scheduler loop."""
         logger.info("DCA scheduler loop started")
-        
+
         while self._running:
             try:
                 now = datetime.utcnow()
                 plans_to_execute = []
-                
-                                        
+
+
                 for plan_id, config in self._plans.items():
                     if config.status != DCAStatus.ACTIVE:
                         continue
-                    
+
                     next_exec = self.scheduler.get_next_execution(plan_id)
-                    
-                                                    
+
+
                     if not next_exec:
                         next_exec = self.scheduler.calculate_next_execution(config)
                         if next_exec:
                             self.scheduler.set_next_execution(plan_id, next_exec)
                             self._stats[plan_id].next_execution = next_exec
                         continue
-                    
-                                                   
+
+
                     if next_exec <= now:
                         plans_to_execute.append(plan_id)
-                
-                                                         
+
+
                 if plans_to_execute:
                     semaphore = asyncio.Semaphore(self.max_concurrent_executions)
                     tasks = []
-                    
+
                     for plan_id in plans_to_execute:
                         task = asyncio.create_task(
                             self._execute_with_semaphore(semaphore, plan_id)
                         )
                         tasks.append(task)
-                    
+
                     await asyncio.gather(*tasks, return_exceptions=True)
-                
-                                         
-                await asyncio.sleep(10)                          
-                
+
+
+                await asyncio.sleep(10)
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Scheduler loop error: {e}")
                 await asyncio.sleep(30)
-    
+
     async def _execute_with_semaphore(
         self,
         semaphore: asyncio.Semaphore,
@@ -883,109 +876,109 @@ class DCAEngine:
         async with semaphore:
             await self._execute_plan(plan_id)
 
-    
+
     async def _execute_plan(self, plan_id: str):
         """Execute a single DCA plan."""
         async with self._plan_locks[plan_id]:
             if plan_id not in self._plans:
                 return
-            
+
             config = self._plans[plan_id]
             stats = self._stats.get(plan_id, DCAStats(plan_id=plan_id))
-            
+
             logger.info(f"Executing DCA plan {plan_id} for {config.token_symbol}")
-            
+
             execution = DCAExecution(
                 plan_id=plan_id,
                 user_id=config.user_id,
                 token_mint=config.token_mint,
                 amount_sol=config.amount_per_buy
             )
-            
+
             try:
-                                      
+
                 check_result = await self._pre_execution_checks(config, stats)
                 if not check_result['passed']:
                     execution.status = 'skipped'
                     execution.error_message = check_result['reason']
                     stats.skipped_count += 1
-                    
+
                     if check_result.get('pause_plan'):
                         await self.pause_plan(plan_id)
                     elif check_result.get('complete_plan'):
                         config.status = DCAStatus.COMPLETED
                         await self._save_plan(config)
-                    
+
                     await self._save_execution(execution)
                     await self._save_stats(stats)
-                    
-                                                              
+
+
                     if config.status == DCAStatus.ACTIVE:
                         await self._schedule_next_execution(config, stats)
-                    
+
                     return
-                
-                                    
+
+
                 if config.smart_timing:
                     fee_check = await self._check_network_fees()
                     if fee_check['fees_high']:
                         if config.retry_on_high_fees:
                             logger.info(f"High fees detected, delaying plan {plan_id}")
-                                                        
+
                             delayed_time = datetime.utcnow() + timedelta(
                                 minutes=self.high_fee_delay_minutes
                             )
                             self.scheduler.set_next_execution(plan_id, delayed_time)
                             stats.next_execution = delayed_time
-                            
+
                             execution.status = 'skipped'
                             execution.error_message = 'High network fees, retrying later'
                             stats.skipped_count += 1
-                            
+
                             await self._save_execution(execution)
                             await self._save_stats(stats)
                             return
-                
-                                  
+
+
                 swap_result = await self._execute_swap(config, execution)
-                
+
                 if swap_result['success']:
-                                             
+
                     execution.status = 'success'
                     execution.tx_signature = swap_result.get('signature')
                     execution.tokens_received = Decimal(str(swap_result.get('tokens_received', 0)))
                     execution.price_per_token_sol = Decimal(str(swap_result.get('price_per_token', 0)))
                     execution.priority_fee_lamports = swap_result.get('priority_fee', 0)
-                    
-                                  
+
+
                     stats.execution_count += 1
                     stats.total_invested_sol += config.amount_per_buy
                     stats.total_tokens_acquired += execution.tokens_received
                     stats.total_fees_paid_sol += Decimal(str(execution.network_fee_lamports)) / Decimal("1e9")
                     stats.total_priority_fees_sol += Decimal(str(execution.priority_fee_lamports)) / Decimal("1e9")
-                    
-                                           
+
+
                     if execution.tokens_received > 0:
                         price = config.amount_per_buy / execution.tokens_received
                         if stats.best_price_sol is None or price < stats.best_price_sol:
                             stats.best_price_sol = price
                         if stats.worst_price_sol is None or price > stats.worst_price_sol:
                             stats.worst_price_sol = price
-                        
-                                             
+
+
                         if stats.total_tokens_acquired > 0:
                             stats.average_price_sol = stats.total_invested_sol / stats.total_tokens_acquired
-                    
+
                     if not stats.first_execution:
                         stats.first_execution = execution.executed_at
                     stats.last_execution = execution.executed_at
-                    
+
                     logger.info(
                         f"DCA execution successful: {plan_id} - "
                         f"{config.amount_per_buy} SOL -> {execution.tokens_received} {config.token_symbol}"
                     )
-                    
-                                 
+
+
                     if self.notify:
                         await self.notify(config.user_id, "dca_executed", {
                             'plan_id': plan_id,
@@ -997,19 +990,19 @@ class DCAEngine:
                             'total_tokens': str(stats.total_tokens_acquired)
                         })
                 else:
-                                      
+
                     execution.status = 'failed'
                     execution.error_message = swap_result.get('error', 'Unknown error')
                     execution.retry_count = swap_result.get('retry_count', 0)
                     stats.failed_count += 1
-                    
+
                     logger.error(f"DCA execution failed: {plan_id} - {execution.error_message}")
-                    
-                                                 
+
+
                     if stats.failed_count >= 3 and stats.failed_count > stats.execution_count:
                         logger.warning(f"Plan {plan_id} has too many failures, pausing")
                         await self.pause_plan(plan_id)
-                        
+
                         if self.notify:
                             await self.notify(config.user_id, "dca_auto_paused", {
                                 'plan_id': plan_id,
@@ -1024,17 +1017,17 @@ class DCAEngine:
                                 'token': config.token_symbol,
                                 'error': execution.error_message
                             })
-                
-                              
+
+
                 await self._save_execution(execution)
                 await self._save_stats(stats)
-                
-                                            
+
+
                 if self._is_plan_completed(config, stats):
                     config.status = DCAStatus.COMPLETED
                     await self._save_plan(config)
                     self.scheduler.clear_schedule(plan_id)
-                    
+
                     if self.notify:
                         await self.notify(config.user_id, "dca_completed", {
                             'plan_id': plan_id,
@@ -1042,22 +1035,22 @@ class DCAEngine:
                             'stats': stats.to_dict()
                         })
                 else:
-                                             
+
                     await self._schedule_next_execution(config, stats)
-                
+
             except Exception as e:
                 logger.exception(f"Error executing DCA plan {plan_id}: {e}")
                 execution.status = 'failed'
                 execution.error_message = str(e)
                 stats.failed_count += 1
-                
+
                 await self._save_execution(execution)
                 await self._save_stats(stats)
-                
-                                
+
+
                 await self._schedule_next_execution(config, stats)
 
-    
+
     async def _pre_execution_checks(
         self,
         config: DCAConfig,
@@ -1065,28 +1058,28 @@ class DCAEngine:
     ) -> Dict[str, Any]:
         """Perform pre-execution checks."""
         result = {'passed': True, 'reason': None}
-        
-                           
+
+
         if config.status != DCAStatus.ACTIVE:
             result['passed'] = False
             result['reason'] = f'Plan is not active: {config.status.value}'
             return result
-        
-                        
+
+
         if config.end_date and datetime.utcnow() > config.end_date:
             result['passed'] = False
             result['reason'] = 'Plan end date reached'
             result['complete_plan'] = True
             return result
-        
-                              
+
+
         if config.max_executions and stats.execution_count >= config.max_executions:
             result['passed'] = False
             result['reason'] = 'Maximum executions reached'
             result['complete_plan'] = True
             return result
-        
-                      
+
+
         if config.total_budget:
             remaining = config.total_budget - stats.total_invested_sol
             if remaining < config.amount_per_buy:
@@ -1094,16 +1087,16 @@ class DCAEngine:
                 result['reason'] = f'Insufficient budget: {remaining} SOL remaining'
                 result['complete_plan'] = True
                 return result
-        
-                              
+
+
         if self.wallet_manager:
             try:
                 balance = await self.wallet_manager.get_balance(config.user_id)
-                if balance < float(config.amount_per_buy) + 0.01:                   
+                if balance < float(config.amount_per_buy) + 0.01:
                     result['passed'] = False
                     result['reason'] = f'Insufficient balance: {balance:.4f} SOL'
                     result['pause_plan'] = True
-                    
+
                     if self.notify:
                         await self.notify(config.user_id, "dca_low_balance", {
                             'plan_id': config.plan_id,
@@ -1114,8 +1107,8 @@ class DCAEngine:
                     return result
             except Exception as e:
                 logger.warning(f"Could not check balance: {e}")
-        
-                            
+
+
         if config.safety_check_enabled and self.token_analyzer:
             try:
                 safety = await self.token_analyzer.analyze(config.token_mint)
@@ -1126,50 +1119,49 @@ class DCAEngine:
                     return result
             except Exception as e:
                 logger.warning(f"Could not check token safety: {e}")
-        
+
         return result
-    
+
     async def _check_network_fees(self) -> Dict[str, Any]:
         """Check current network fees."""
-                                                             
+
         return {
             'fees_high': False,
             'current_priority_fee': 5000,
             'recommended_fee': 10000
         }
-    
+
     async def _execute_swap(
         self,
         config: DCAConfig,
         execution: DCAExecution
     ) -> Dict[str, Any]:
         """Execute the actual swap transaction."""
-                                                  
-                                                    
-        
+
+
         if not self.jupiter:
             logger.warning("Jupiter client not configured, simulating execution")
             return {
                 'success': True,
                 'signature': f'sim_{execution.execution_id[:8]}',
-                'tokens_received': float(config.amount_per_buy) * 1000000,             
+                'tokens_received': float(config.amount_per_buy) * 1000000,
                 'price_per_token': float(config.amount_per_buy) / 1000000,
                 'priority_fee': 5000
             }
-        
+
         try:
-                                    
+
             quote = await self.jupiter.get_quote(
-                input_mint="So11111111111111111111111111111111111111112",       
+                input_mint="So11111111111111111111111111111111111111112",
                 output_mint=config.token_mint,
-                amount=int(float(config.amount_per_buy) * 1e9),            
+                amount=int(float(config.amount_per_buy) * 1e9),
                 slippage_bps=config.slippage_bps
             )
-            
+
             if not quote:
                 return {'success': False, 'error': 'Failed to get quote'}
-            
-                          
+
+
             result = await self.jupiter.execute_swap(
                 user_id=config.user_id,
                 quote=quote,
@@ -1178,35 +1170,35 @@ class DCAEngine:
                     quote.get('recommended_priority_fee', 10000)
                 )
             )
-            
+
             return result
-            
+
         except Exception as e:
             return {'success': False, 'error': str(e)}
-    
+
     def _is_plan_completed(self, config: DCAConfig, stats: DCAStats) -> bool:
         """Check if a DCA plan is completed."""
-                              
+
         if config.max_executions and stats.execution_count >= config.max_executions:
             return True
-        
-                                
+
+
         if config.total_budget:
             remaining = config.total_budget - stats.total_invested_sol
             if remaining < config.amount_per_buy:
                 return True
-        
-                        
+
+
         if config.end_date and datetime.utcnow() > config.end_date:
             return True
-        
+
         return False
-    
+
     async def _schedule_next_execution(self, config: DCAConfig, stats: DCAStats):
         """Schedule the next execution for a plan."""
         if config.status != DCAStatus.ACTIVE:
             return
-        
+
         next_exec = self.scheduler.calculate_next_execution(config)
         if next_exec:
             self.scheduler.set_next_execution(config.plan_id, next_exec)
@@ -1214,11 +1206,7 @@ class DCAEngine:
             await self._save_stats(stats)
             logger.debug(f"Scheduled next execution for {config.plan_id}: {next_exec}")
 
-    
-                                                                               
-                           
-                                                                               
-    
+
     async def get_performance_summary(
         self,
         user_id: int,
@@ -1229,11 +1217,11 @@ class DCAEngine:
             plans = [self._plans.get(plan_id)] if plan_id in self._plans else []
         else:
             plans = [p for p in self._plans.values() if p.user_id == user_id]
-        
+
         total_invested = Decimal("0")
         total_tokens = {}
         total_fees = Decimal("0")
-        
+
         for plan in plans:
             if not plan:
                 continue
@@ -1241,7 +1229,7 @@ class DCAEngine:
             if stats:
                 total_invested += stats.total_invested_sol
                 total_fees += stats.total_fees_paid_sol
-                
+
                 if plan.token_symbol not in total_tokens:
                     total_tokens[plan.token_symbol] = {
                         'amount': Decimal("0"),
@@ -1250,12 +1238,12 @@ class DCAEngine:
                     }
                 total_tokens[plan.token_symbol]['amount'] += stats.total_tokens_acquired
                 total_tokens[plan.token_symbol]['invested'] += stats.total_invested_sol
-        
-                            
+
+
         for symbol, data in total_tokens.items():
             if data['amount'] > 0:
                 data['avg_price'] = data['invested'] / data['amount']
-        
+
         return {
             'total_invested_sol': str(total_invested),
             'total_fees_sol': str(total_fees),
@@ -1270,7 +1258,7 @@ class DCAEngine:
             'active_plans': len([p for p in plans if p and p.status == DCAStatus.ACTIVE]),
             'total_plans': len(plans)
         }
-    
+
     async def compare_to_lump_sum(
         self,
         plan_id: str,
@@ -1279,26 +1267,26 @@ class DCAEngine:
         """Compare DCA performance to lump sum investment."""
         if plan_id not in self._plans or plan_id not in self._stats:
             return {'error': 'Plan not found'}
-        
+
         stats = self._stats[plan_id]
-        
+
         if stats.total_invested_sol == 0 or stats.total_tokens_acquired == 0:
             return {'error': 'No executions yet'}
-        
-                     
+
+
         dca_avg_price = stats.average_price_sol
         dca_tokens = stats.total_tokens_acquired
         dca_value = dca_tokens * current_price
-        
-                                                                          
-        first_price = stats.best_price_sol or dca_avg_price                 
+
+
+        first_price = stats.best_price_sol or dca_avg_price
         lump_sum_tokens = stats.total_invested_sol / first_price if first_price else 0
         lump_sum_value = lump_sum_tokens * current_price
-        
-                             
+
+
         dca_advantage = dca_value - lump_sum_value
         dca_advantage_percent = (dca_advantage / lump_sum_value * 100) if lump_sum_value else 0
-        
+
         return {
             'dca_average_price': str(dca_avg_price),
             'dca_tokens_acquired': str(dca_tokens),
@@ -1309,7 +1297,7 @@ class DCAEngine:
             'dca_advantage_percent': f"{dca_advantage_percent:.2f}%",
             'dca_outperformed': dca_advantage > 0
         }
-    
+
     async def get_execution_history(
         self,
         plan_id: str,
@@ -1326,45 +1314,41 @@ class DCAEngine:
             """, (plan_id, limit, offset)) as cursor:
                 rows = await cursor.fetchall()
                 return [json.loads(row[0]) for row in rows]
-    
-                                                                               
-                      
-                                                                               
-    
+
+
     async def execute_now(self, plan_id: str) -> Dict[str, Any]:
         """Manually trigger immediate execution of a plan."""
         if plan_id not in self._plans:
             return {'success': False, 'error': 'Plan not found'}
-        
+
         config = self._plans[plan_id]
-        
+
         if config.status not in [DCAStatus.ACTIVE, DCAStatus.PAUSED]:
             return {'success': False, 'error': f'Plan cannot be executed: {config.status.value}'}
-        
-                                        
+
+
         was_paused = config.status == DCAStatus.PAUSED
         if was_paused:
             config.status = DCAStatus.ACTIVE
-        
+
         try:
             await self._execute_plan(plan_id)
-            
-                                  
+
+
             executions = await self._get_recent_executions(plan_id, limit=1)
             latest = executions[0] if executions else None
-            
+
             return {
                 'success': True,
                 'execution': latest
             }
         finally:
-                                             
+
             if was_paused:
                 config.status = DCAStatus.PAUSED
                 await self._save_plan(config)
 
 
-                                           
 async def create_dca_engine(
     db_path: str = "data/dca_engine.db",
     jupiter_client: Any = None,
