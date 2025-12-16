@@ -1,7 +1,3 @@
-"""
-Risk Manager - Comprehensive Risk Management System
-Production-grade risk management for Solana trading bot
-"""
 
 import asyncio
 import logging
@@ -15,27 +11,19 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-
-# ==================== ENUMS ====================
-
 class RiskLevel(Enum):
-    """Risk level classification"""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
-
 class StopType(Enum):
-    """Types of stop-loss orders"""
     FIXED = "fixed"
     TRAILING = "trailing"
     TIME_BASED = "time_based"
     BREAK_EVEN = "break_even"
 
-
 class AlertType(Enum):
-    """Risk alert types"""
     HIGH_EXPOSURE = auto()
     LOSING_STREAK = auto()
     TOKEN_SAFETY_CHANGE = auto()
@@ -47,63 +35,46 @@ class AlertType(Enum):
     POSITION_LIMIT_WARNING = auto()
     UNUSUAL_ACTIVITY = auto()
 
-
 class CircuitBreakerState(Enum):
-    """Circuit breaker states"""
-    CLOSED = "closed"  # Normal operation
-    OPEN = "open"      # Trading halted
-    HALF_OPEN = "half_open"  # Testing if safe to resume
-
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
 
 class TradeAction(Enum):
-    """Trade action types"""
     BUY = "buy"
     SELL = "sell"
 
-
-# ==================== RISK SETTINGS ====================
-
 @dataclass
 class RiskSettings:
-    """Per-user risk configuration"""
-    # Position limits
     max_position_sol: Decimal = Decimal("1.0")
     max_position_pct: Decimal = Decimal("10.0")
     max_total_exposure: Decimal = Decimal("10.0")
     max_positions: int = 10
     
-    # Daily limits
     max_daily_loss_pct: Decimal = Decimal("10.0")
     max_daily_loss_sol: Decimal = Decimal("2.0")
     max_daily_trades: int = 50
     
-    # Slippage settings
     max_slippage_pct: Decimal = Decimal("5.0")
     default_slippage_pct: Decimal = Decimal("1.0")
     
-    # Stop-loss defaults
     default_stop_loss_pct: Decimal = Decimal("15.0")
     default_trailing_stop_pct: Decimal = Decimal("10.0")
     auto_stop_loss: bool = True
     
-    # Take-profit defaults
     default_take_profit_pct: Decimal = Decimal("50.0")
     auto_take_profit: bool = False
     
-    # Safety requirements
     min_token_safety_score: int = 30
     require_liquidity_check: bool = True
     min_liquidity_sol: Decimal = Decimal("5.0")
     
-    # Circuit breaker settings
     max_consecutive_losses: int = 5
     cooldown_minutes: int = 30
     
-    # Premium features
     is_premium: bool = False
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
         return {
             "max_position_sol": str(self.max_position_sol),
             "max_position_pct": str(self.max_position_pct),
@@ -129,7 +100,6 @@ class RiskSettings:
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "RiskSettings":
-        """Create from dictionary"""
         return cls(
             max_position_sol=Decimal(str(data.get("max_position_sol", "1.0"))),
             max_position_pct=Decimal(str(data.get("max_position_pct", "10.0"))),
@@ -154,7 +124,6 @@ class RiskSettings:
         )
     
     def validate(self) -> Tuple[bool, List[str]]:
-        """Validate settings are within acceptable bounds"""
         errors = []
         if self.max_position_sol <= 0 or self.max_position_sol > Decimal("100"):
             errors.append("max_position_sol must be between 0 and 100 SOL")
@@ -176,30 +145,23 @@ class RiskSettings:
             errors.append("min_token_safety_score must be between 0 and 100")
         return len(errors) == 0, errors
 
-
-# ==================== STOP-LOSS & TAKE-PROFIT ====================
-
 @dataclass
 class TakeProfitLevel:
-    """Single take-profit level"""
-    price_pct: Decimal  # % above entry price
-    sell_pct: Decimal   # % of position to sell
+    price_pct: Decimal
+    sell_pct: Decimal
     triggered: bool = False
     triggered_at: Optional[datetime] = None
 
-
 @dataclass
 class StopLoss:
-    """Stop-loss configuration"""
     stop_type: StopType
-    trigger_pct: Decimal  # % below entry (or trailing high)
-    trailing_high: Optional[Decimal] = None  # Highest price seen (for trailing)
-    time_limit: Optional[datetime] = None  # For time-based stops
+    trigger_pct: Decimal
+    trailing_high: Optional[Decimal] = None
+    time_limit: Optional[datetime] = None
     triggered: bool = False
     triggered_at: Optional[datetime] = None
     
     def update_trailing(self, current_price: Decimal, entry_price: Decimal) -> bool:
-        """Update trailing stop high, returns True if updated"""
         if self.stop_type != StopType.TRAILING:
             return False
         
@@ -209,7 +171,6 @@ class StopLoss:
         return False
     
     def get_trigger_price(self, entry_price: Decimal) -> Decimal:
-        """Calculate the price at which stop triggers"""
         if self.stop_type == StopType.TRAILING and self.trailing_high:
             return self.trailing_high * (1 - self.trigger_pct / 100)
         elif self.stop_type == StopType.BREAK_EVEN:
@@ -217,59 +178,47 @@ class StopLoss:
         else:
             return entry_price * (1 - self.trigger_pct / 100)
 
-
-# ==================== POSITION ====================
-
 @dataclass
 class Position:
-    """Trading position"""
     position_id: str
     user_id: int
     token_address: str
     token_symbol: str
     entry_price: Decimal
-    amount: Decimal  # Token amount
-    entry_value_sol: Decimal  # Value at entry in SOL
+    amount: Decimal
+    entry_value_sol: Decimal
     entry_time: datetime
     
-    # Current state
     current_price: Optional[Decimal] = None
     current_value_sol: Optional[Decimal] = None
     
-    # Stop-loss and take-profit
     stop_loss: Optional[StopLoss] = None
     take_profit_levels: List[TakeProfitLevel] = field(default_factory=list)
     
-    # Status
     is_open: bool = True
     closed_at: Optional[datetime] = None
     close_price: Optional[Decimal] = None
     close_reason: Optional[str] = None
     
-    # Realized P&L (from partial closes)
     realized_pnl_sol: Decimal = Decimal("0")
     
     @property
     def unrealized_pnl_sol(self) -> Decimal:
-        """Calculate unrealized P&L"""
         if self.current_value_sol is None:
             return Decimal("0")
         return self.current_value_sol - self.entry_value_sol
     
     @property
     def unrealized_pnl_pct(self) -> Decimal:
-        """Calculate unrealized P&L percentage"""
         if self.entry_value_sol == 0:
             return Decimal("0")
         return (self.unrealized_pnl_sol / self.entry_value_sol) * 100
     
     @property
     def total_pnl_sol(self) -> Decimal:
-        """Total P&L (realized + unrealized)"""
         return self.realized_pnl_sol + self.unrealized_pnl_sol
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary"""
         return {
             "position_id": self.position_id,
             "user_id": self.user_id,
@@ -288,12 +237,8 @@ class Position:
             "total_pnl_sol": str(self.total_pnl_sol)
         }
 
-
-# ==================== VALIDATION & ALERT DATACLASSES ====================
-
 @dataclass
 class TradeValidationResult:
-    """Result of trade validation"""
     approved: bool
     reason: str
     risk_level: RiskLevel = RiskLevel.LOW
@@ -309,10 +254,8 @@ class TradeValidationResult:
             "adjusted_params": self.adjusted_params
         }
 
-
 @dataclass
 class RiskAlert:
-    """Risk alert notification"""
     alert_id: str
     alert_type: AlertType
     user_id: int
@@ -334,11 +277,9 @@ class RiskAlert:
             "acknowledged": self.acknowledged
         }
 
-
 @dataclass
 class DailyStats:
-    """Daily trading statistics"""
-    date: str  # YYYY-MM-DD
+    date: str
     user_id: int
     trades_count: int = 0
     winning_trades: int = 0
@@ -353,7 +294,6 @@ class DailyStats:
     
     @property
     def win_rate(self) -> Decimal:
-        """Calculate win rate"""
         total = self.winning_trades + self.losing_trades
         if total == 0:
             return Decimal("0")
@@ -361,28 +301,16 @@ class DailyStats:
     
     @property
     def daily_loss_pct(self) -> Decimal:
-        """Calculate daily loss percentage"""
         if self.starting_balance == 0:
             return Decimal("0")
         return (self.total_pnl_sol / self.starting_balance) * 100
 
-
-# ==================== CIRCUIT BREAKER ====================
-
 class CircuitBreaker:
-    """
-    Circuit breaker for automatic trading halt
-    
-    States:
-    - CLOSED: Normal operation, trading allowed
-    - OPEN: Trading halted due to trigger condition
-    - HALF_OPEN: Testing phase, limited trading allowed
-    """
     
     def __init__(
         self,
         failure_threshold: int = 5,
-        recovery_timeout: int = 30,  # minutes
+        recovery_timeout: int = 30,
         half_open_max_trades: int = 2
     ):
         self.failure_threshold = failure_threshold
@@ -398,7 +326,6 @@ class CircuitBreaker:
         self._lock = asyncio.Lock()
     
     async def record_success(self):
-        """Record a successful trade"""
         async with self._lock:
             if self.state == CircuitBreakerState.HALF_OPEN:
                 self.half_open_trades += 1
@@ -408,7 +335,6 @@ class CircuitBreaker:
                 self.failure_count = 0
     
     async def record_failure(self, reason: str = "Trade failed"):
-        """Record a failed trade"""
         async with self._lock:
             self.failure_count += 1
             self.last_failure_time = datetime.now(timezone.utc)
@@ -419,17 +345,14 @@ class CircuitBreaker:
                 self._open(reason)
     
     async def force_open(self, reason: str):
-        """Force the circuit breaker open"""
         async with self._lock:
             self._open(reason)
     
     async def force_close(self):
-        """Force the circuit breaker closed (manual override)"""
         async with self._lock:
             self._close()
     
     async def can_execute(self) -> Tuple[bool, str]:
-        """Check if trading is allowed"""
         async with self._lock:
             if self.state == CircuitBreakerState.CLOSED:
                 return True, "Trading allowed"
@@ -448,7 +371,6 @@ class CircuitBreaker:
             return False, "Unknown circuit breaker state"
     
     def _open(self, reason: str):
-        """Open the circuit breaker (halt trading)"""
         self.state = CircuitBreakerState.OPEN
         self.opened_at = datetime.now(timezone.utc)
         self.trigger_reason = reason
@@ -456,13 +378,11 @@ class CircuitBreaker:
         logger.warning(f"Circuit breaker OPENED: {reason}")
     
     def _half_open(self):
-        """Transition to half-open state"""
         self.state = CircuitBreakerState.HALF_OPEN
         self.half_open_trades = 0
         logger.info("Circuit breaker entering HALF-OPEN state")
     
     def _close(self):
-        """Close the circuit breaker (resume trading)"""
         self.state = CircuitBreakerState.CLOSED
         self.failure_count = 0
         self.opened_at = None
@@ -471,7 +391,6 @@ class CircuitBreaker:
         logger.info("Circuit breaker CLOSED - trading resumed")
     
     def get_status(self) -> Dict[str, Any]:
-        """Get circuit breaker status"""
         return {
             "state": self.state.value,
             "failure_count": self.failure_count,
@@ -481,16 +400,12 @@ class CircuitBreaker:
             "recovery_timeout_minutes": self.recovery_timeout.total_seconds() / 60
         }
 
-
-# ==================== POSITION MANAGER ====================
-
 class PositionManager:
-    """Manages trading positions with CRUD operations"""
     
     def __init__(self):
-        self.positions: Dict[str, Position] = {}  # position_id -> Position
-        self.user_positions: Dict[int, Set[str]] = defaultdict(set)  # user_id -> position_ids
-        self.token_positions: Dict[str, Set[str]] = defaultdict(set)  # token_address -> position_ids
+        self.positions: Dict[str, Position] = {}
+        self.user_positions: Dict[int, Set[str]] = defaultdict(set)
+        self.token_positions: Dict[str, Set[str]] = defaultdict(set)
         self._lock = asyncio.Lock()
     
     async def create_position(
@@ -504,7 +419,6 @@ class PositionManager:
         stop_loss: Optional[StopLoss] = None,
         take_profit_levels: Optional[List[TakeProfitLevel]] = None
     ) -> Position:
-        """Create a new position"""
         async with self._lock:
             position_id = str(uuid.uuid4())[:8]
             
@@ -531,11 +445,9 @@ class PositionManager:
             return position
     
     async def get_position(self, position_id: str) -> Optional[Position]:
-        """Get a position by ID"""
         return self.positions.get(position_id)
     
     async def get_user_positions(self, user_id: int, open_only: bool = True) -> List[Position]:
-        """Get all positions for a user"""
         position_ids = self.user_positions.get(user_id, set())
         positions = [self.positions[pid] for pid in position_ids if pid in self.positions]
         
@@ -545,7 +457,6 @@ class PositionManager:
         return positions
     
     async def get_token_positions(self, token_address: str, user_id: Optional[int] = None) -> List[Position]:
-        """Get all positions for a token"""
         position_ids = self.token_positions.get(token_address, set())
         positions = [self.positions[pid] for pid in position_ids if pid in self.positions]
         
@@ -560,7 +471,6 @@ class PositionManager:
         current_price: Decimal,
         current_value_sol: Decimal
     ) -> Optional[Position]:
-        """Update position with current price"""
         async with self._lock:
             position = self.positions.get(position_id)
             if not position or not position.is_open:
@@ -581,7 +491,6 @@ class PositionManager:
         close_reason: str,
         realized_pnl: Optional[Decimal] = None
     ) -> Optional[Position]:
-        """Close a position"""
         async with self._lock:
             position = self.positions.get(position_id)
             if not position:
@@ -608,7 +517,6 @@ class PositionManager:
         close_price: Decimal,
         reason: str
     ) -> Tuple[Optional[Position], Decimal]:
-        """Partially close a position, returns position and realized PnL"""
         async with self._lock:
             position = self.positions.get(position_id)
             if not position or not position.is_open:
@@ -636,7 +544,6 @@ class PositionManager:
         trigger_pct: Decimal,
         time_limit: Optional[datetime] = None
     ) -> bool:
-        """Set stop-loss for a position"""
         async with self._lock:
             position = self.positions.get(position_id)
             if not position or not position.is_open:
@@ -657,7 +564,6 @@ class PositionManager:
         position_id: str,
         levels: List[Tuple[Decimal, Decimal]]
     ) -> bool:
-        """Set take-profit levels for a position"""
         async with self._lock:
             position = self.positions.get(position_id)
             if not position or not position.is_open:
@@ -672,17 +578,14 @@ class PositionManager:
             return True
     
     async def get_open_positions_count(self, user_id: int) -> int:
-        """Get count of open positions for a user"""
         positions = await self.get_user_positions(user_id, open_only=True)
         return len(positions)
     
     async def get_total_exposure(self, user_id: int) -> Decimal:
-        """Get total exposure (invested amount) for a user"""
         positions = await self.get_user_positions(user_id, open_only=True)
         return sum(p.current_value_sol or p.entry_value_sol for p in positions)
     
     async def get_exposure_by_token(self, user_id: int) -> Dict[str, Decimal]:
-        """Get exposure broken down by token"""
         positions = await self.get_user_positions(user_id, open_only=True)
         exposure = defaultdict(Decimal)
         
@@ -691,52 +594,29 @@ class PositionManager:
         
         return dict(exposure)
 
-
-# ==================== MAIN RISK MANAGER ====================
-
 class RiskManager:
-    """
-    Comprehensive risk management system
-    
-    Features:
-    - Per-user risk settings
-    - Position and exposure limits
-    - Trade validation
-    - Daily loss limits
-    - Stop-loss and take-profit management
-    - Circuit breaker functionality
-    - Risk alerts
-    """
     
     def __init__(self, token_scanner=None):
         self.token_scanner = token_scanner
         self.position_manager = PositionManager()
         
-        # Per-user data
         self.user_settings: Dict[int, RiskSettings] = {}
         self.user_circuit_breakers: Dict[int, CircuitBreaker] = {}
         self.user_daily_stats: Dict[int, DailyStats] = {}
         self.user_balances: Dict[int, Decimal] = {}
         
-        # Global limits
         self.global_settings = RiskSettings()
         
-        # Alerts
         self.alerts: List[RiskAlert] = []
         self.alert_callbacks: List[Callable[[RiskAlert], None]] = []
         
-        # Locks
         self._settings_lock = asyncio.Lock()
         self._stats_lock = asyncio.Lock()
         
-        # Price monitoring task
         self._monitoring_task: Optional[asyncio.Task] = None
         self._stop_monitoring = False
     
-    # ==================== SETTINGS MANAGEMENT ====================
-    
     async def get_user_settings(self, user_id: int) -> RiskSettings:
-        """Get risk settings for a user"""
         async with self._settings_lock:
             if user_id not in self.user_settings:
                 self.user_settings[user_id] = RiskSettings()
@@ -747,7 +627,6 @@ class RiskManager:
         user_id: int,
         updates: Dict[str, Any]
     ) -> Tuple[bool, List[str]]:
-        """Update user risk settings"""
         async with self._settings_lock:
             current = await self.get_user_settings(user_id)
             new_data = current.to_dict()
@@ -760,7 +639,6 @@ class RiskManager:
             new_data.update(updates)
             new_settings = RiskSettings.from_dict(new_data)
             
-            # Apply premium restrictions
             if not new_settings.is_premium:
                 if new_settings.max_position_sol > Decimal("5"):
                     new_settings.max_position_sol = Decimal("5")
@@ -778,15 +656,11 @@ class RiskManager:
             return True, []
     
     async def reset_user_settings(self, user_id: int):
-        """Reset user settings to defaults"""
         async with self._settings_lock:
             is_premium = self.user_settings.get(user_id, RiskSettings()).is_premium
             self.user_settings[user_id] = RiskSettings(is_premium=is_premium)
     
-    # ==================== CIRCUIT BREAKER ====================
-    
     async def get_circuit_breaker(self, user_id: int) -> CircuitBreaker:
-        """Get or create circuit breaker for user"""
         if user_id not in self.user_circuit_breakers:
             settings = await self.get_user_settings(user_id)
             self.user_circuit_breakers[user_id] = CircuitBreaker(
@@ -796,7 +670,6 @@ class RiskManager:
         return self.user_circuit_breakers[user_id]
     
     async def trigger_circuit_breaker(self, user_id: int, reason: str):
-        """Manually trigger circuit breaker"""
         cb = await self.get_circuit_breaker(user_id)
         await cb.force_open(reason)
         
@@ -809,14 +682,10 @@ class RiskManager:
         )
     
     async def reset_circuit_breaker(self, user_id: int):
-        """Manually reset circuit breaker"""
         cb = await self.get_circuit_breaker(user_id)
         await cb.force_close()
     
-    # ==================== DAILY STATS ====================
-    
     async def get_daily_stats(self, user_id: int) -> DailyStats:
-        """Get or create daily stats for user"""
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         
         async with self._stats_lock:
@@ -836,7 +705,6 @@ class RiskManager:
         pnl_sol: Decimal,
         is_win: bool
     ):
-        """Record a trade result for daily stats"""
         stats = await self.get_daily_stats(user_id)
         settings = await self.get_user_settings(user_id)
         
@@ -855,7 +723,6 @@ class RiskManager:
             if user_id in self.user_balances:
                 self.user_balances[user_id] += pnl_sol
             
-            # Check for daily loss limit
             if stats.total_pnl_sol < 0:
                 loss_pct = abs(stats.daily_loss_pct)
                 loss_sol = abs(stats.total_pnl_sol)
@@ -873,34 +740,18 @@ class RiskManager:
                         {"loss_sol": str(loss_sol), "loss_pct": str(loss_pct)}
                     )
             
-            # Check consecutive losses
             if stats.consecutive_losses >= settings.max_consecutive_losses:
                 cb = await self.get_circuit_breaker(user_id)
                 await cb.record_failure(f"{stats.consecutive_losses} consecutive losses")
 
-    
-    # ==================== TRADE VALIDATION ====================
-    
     async def validate_trade(
         self,
         user_id: int,
         trade_params: Dict[str, Any]
     ) -> TradeValidationResult:
-        """
-        Comprehensive pre-trade validation
-        
-        trade_params should include:
-        - action: "buy" or "sell"
-        - token_address: str
-        - amount_sol: Decimal (for buy) or token_amount (for sell)
-        - slippage_pct: Optional[Decimal]
-        - token_safety_score: Optional[int]
-        - token_liquidity: Optional[Decimal]
-        """
         settings = await self.get_user_settings(user_id)
         warnings = []
         
-        # 1. Check circuit breaker
         cb = await self.get_circuit_breaker(user_id)
         can_trade, cb_reason = await cb.can_execute()
         if not can_trade:
@@ -910,7 +761,6 @@ class RiskManager:
                 risk_level=RiskLevel.CRITICAL
             )
         
-        # 2. Check daily trading halt
         stats = await self.get_daily_stats(user_id)
         if stats.trading_halted:
             return TradeValidationResult(
@@ -919,7 +769,6 @@ class RiskManager:
                 risk_level=RiskLevel.CRITICAL
             )
         
-        # 3. Check daily trade count
         if stats.trades_count >= settings.max_daily_trades:
             return TradeValidationResult(
                 approved=False,
@@ -941,7 +790,6 @@ class RiskManager:
         settings: RiskSettings,
         warnings: List[str]
     ) -> TradeValidationResult:
-        """Validate a buy trade"""
         amount_sol = Decimal(str(params.get("amount_sol", "0")))
         token_address = params.get("token_address", "")
         slippage_pct = Decimal(str(params.get("slippage_pct", settings.default_slippage_pct)))
@@ -950,7 +798,6 @@ class RiskManager:
         
         adjusted_params = {}
         
-        # 1. Check position size limits
         if amount_sol > settings.max_position_sol:
             return TradeValidationResult(
                 approved=False,
@@ -958,7 +805,6 @@ class RiskManager:
                 risk_level=RiskLevel.HIGH
             )
         
-        # 2. Check portfolio percentage
         balance = self.user_balances.get(user_id, Decimal("10"))
         position_pct = (amount_sol / balance) * 100 if balance > 0 else Decimal("100")
         
@@ -969,7 +815,6 @@ class RiskManager:
                 risk_level=RiskLevel.HIGH
             )
         
-        # 3. Check available balance
         if amount_sol > balance:
             return TradeValidationResult(
                 approved=False,
@@ -977,7 +822,6 @@ class RiskManager:
                 risk_level=RiskLevel.HIGH
             )
         
-        # 4. Check total exposure
         current_exposure = await self.position_manager.get_total_exposure(user_id)
         new_exposure = current_exposure + amount_sol
         
@@ -988,7 +832,6 @@ class RiskManager:
                 risk_level=RiskLevel.HIGH
             )
         
-        # 5. Check position count
         open_positions = await self.position_manager.get_open_positions_count(user_id)
         if open_positions >= settings.max_positions:
             return TradeValidationResult(
@@ -997,18 +840,15 @@ class RiskManager:
                 risk_level=RiskLevel.MEDIUM
             )
         
-        # 6. Check if already have position in this token
         existing_positions = await self.position_manager.get_token_positions(token_address, user_id)
         if existing_positions:
             warnings.append(f"Already have {len(existing_positions)} position(s) in this token")
         
-        # 7. Check slippage
         if slippage_pct > settings.max_slippage_pct:
             adjusted_params["slippage_pct"] = str(settings.max_slippage_pct)
             warnings.append(f"Slippage adjusted from {slippage_pct}% to {settings.max_slippage_pct}%")
             slippage_pct = settings.max_slippage_pct
         
-        # 8. Check token safety
         if token_safety_score is not None:
             if token_safety_score < settings.min_token_safety_score:
                 return TradeValidationResult(
@@ -1020,7 +860,6 @@ class RiskManager:
             elif token_safety_score < 50:
                 warnings.append(f"Low token safety score: {token_safety_score}")
         
-        # 9. Check liquidity
         if settings.require_liquidity_check and token_liquidity is not None:
             if Decimal(str(token_liquidity)) < settings.min_liquidity_sol:
                 return TradeValidationResult(
@@ -1030,7 +869,6 @@ class RiskManager:
                     warnings=warnings
                 )
         
-        # Determine risk level
         risk_level = RiskLevel.LOW
         if warnings:
             risk_level = RiskLevel.MEDIUM
@@ -1054,7 +892,6 @@ class RiskManager:
         settings: RiskSettings,
         warnings: List[str]
     ) -> TradeValidationResult:
-        """Validate a sell trade"""
         position_id = params.get("position_id")
         token_address = params.get("token_address")
         sell_pct = Decimal(str(params.get("sell_pct", "100")))
@@ -1096,16 +933,12 @@ class RiskManager:
             warnings=warnings
         )
 
-    
-    # ==================== STOP-LOSS MANAGEMENT ====================
-    
     async def set_stop_loss(
         self,
         position_id: str,
         price_pct: Decimal,
         stop_type: StopType = StopType.FIXED
     ) -> bool:
-        """Set stop-loss for a position"""
         return await self.position_manager.set_stop_loss(
             position_id,
             stop_type,
@@ -1117,7 +950,6 @@ class RiskManager:
         position_id: str,
         trail_pct: Decimal
     ) -> bool:
-        """Set trailing stop for a position"""
         return await self.position_manager.set_stop_loss(
             position_id,
             StopType.TRAILING,
@@ -1125,7 +957,6 @@ class RiskManager:
         )
     
     async def set_break_even_stop(self, position_id: str) -> bool:
-        """Set stop-loss at break-even (entry price)"""
         return await self.position_manager.set_stop_loss(
             position_id,
             StopType.BREAK_EVEN,
@@ -1138,7 +969,6 @@ class RiskManager:
         hours: int,
         fallback_pct: Decimal = Decimal("10")
     ) -> bool:
-        """Set time-based stop - exits after X hours if not in profit"""
         time_limit = datetime.now(timezone.utc) + timedelta(hours=hours)
         return await self.position_manager.set_stop_loss(
             position_id,
@@ -1147,14 +977,11 @@ class RiskManager:
             time_limit=time_limit
         )
     
-    # ==================== TAKE-PROFIT MANAGEMENT ====================
-    
     async def set_take_profit(
         self,
         position_id: str,
         price_pct: Decimal
     ) -> bool:
-        """Set single take-profit level (100% exit)"""
         return await self.position_manager.set_take_profit(
             position_id,
             [(price_pct, Decimal("100"))]
@@ -1165,23 +992,13 @@ class RiskManager:
         position_id: str,
         levels: List[Tuple[Decimal, Decimal]]
     ) -> bool:
-        """
-        Set multiple take-profit levels
-        
-        levels: [(price_pct, sell_pct), ...]
-        Example: [(50, 25), (100, 50), (200, 25)] 
-                 = Sell 25% at +50%, 50% at +100%, 25% at +200%
-        """
         total_sell_pct = sum(level[1] for level in levels)
         if total_sell_pct != Decimal("100"):
             logger.warning(f"Take-profit levels sum to {total_sell_pct}%, not 100%")
         
         return await self.position_manager.set_take_profit(position_id, levels)
     
-    # ==================== EXPOSURE TRACKING ====================
-    
     async def get_current_exposure(self, user_id: int) -> Dict[str, Any]:
-        """Get current exposure summary for a user"""
         positions = await self.position_manager.get_user_positions(user_id, open_only=True)
         settings = await self.get_user_settings(user_id)
         
@@ -1199,7 +1016,6 @@ class RiskManager:
         }
     
     async def get_exposure_by_token(self, user_id: int) -> Dict[str, Dict[str, Any]]:
-        """Get exposure broken down by token"""
         positions = await self.position_manager.get_user_positions(user_id, open_only=True)
         
         token_exposure = {}
@@ -1227,11 +1043,6 @@ class RiskManager:
         user_id: int,
         period: str = "daily"
     ) -> Dict[str, Any]:
-        """
-        Get profit/loss for a period
-        
-        period: "daily", "weekly", "monthly", "all"
-        """
         positions = await self.position_manager.get_user_positions(user_id, open_only=False)
         
         now = datetime.now(timezone.utc)
@@ -1268,9 +1079,6 @@ class RiskManager:
             "open_positions": len([p for p in period_positions if p.is_open])
         }
 
-    
-    # ==================== ALERTS ====================
-    
     async def _create_alert(
         self,
         alert_type: AlertType,
@@ -1279,7 +1087,6 @@ class RiskManager:
         message: str,
         data: Dict[str, Any]
     ):
-        """Create and dispatch a risk alert"""
         alert = RiskAlert(
             alert_id=str(uuid.uuid4())[:8],
             alert_type=alert_type,
@@ -1304,7 +1111,6 @@ class RiskManager:
         logger.warning(f"Risk alert [{severity.value}]: {message}")
     
     def register_alert_callback(self, callback: Callable[[RiskAlert], None]):
-        """Register a callback for risk alerts"""
         self.alert_callbacks.append(callback)
     
     async def get_alerts(
@@ -1313,7 +1119,6 @@ class RiskManager:
         severity: Optional[RiskLevel] = None,
         limit: int = 50
     ) -> List[Dict[str, Any]]:
-        """Get recent alerts, optionally filtered"""
         alerts = self.alerts
         
         if user_id is not None:
@@ -1325,14 +1130,11 @@ class RiskManager:
         return [a.to_dict() for a in reversed(alerts[-limit:])]
     
     async def acknowledge_alert(self, alert_id: str) -> bool:
-        """Acknowledge an alert"""
         for alert in self.alerts:
             if alert.alert_id == alert_id:
                 alert.acknowledged = True
                 return True
         return False
-    
-    # ==================== POSITION LIFECYCLE ====================
     
     async def on_position_opened(
         self,
@@ -1343,7 +1145,6 @@ class RiskManager:
         amount: Decimal,
         entry_value_sol: Decimal
     ) -> Position:
-        """Handle new position opened"""
         settings = await self.get_user_settings(user_id)
         
         stop_loss = None
@@ -1394,7 +1195,6 @@ class RiskManager:
         close_price: Decimal,
         close_reason: str
     ) -> Optional[Position]:
-        """Handle position closed"""
         position = await self.position_manager.close_position(
             position_id,
             close_price,
@@ -1422,7 +1222,6 @@ class RiskManager:
         return position
     
     async def check_stop_loss(self, position: Position, current_price: Decimal) -> bool:
-        """Check if stop-loss should trigger"""
         if not position.stop_loss or position.stop_loss.triggered:
             return False
         
@@ -1440,7 +1239,6 @@ class RiskManager:
         return False
     
     async def check_take_profit(self, position: Position, current_price: Decimal) -> Optional[TakeProfitLevel]:
-        """Check if any take-profit level should trigger"""
         for level in position.take_profit_levels:
             if level.triggered:
                 continue
@@ -1451,11 +1249,7 @@ class RiskManager:
         
         return None
 
-    
-    # ==================== MONITORING ====================
-    
     async def start_monitoring(self, price_callback: Callable[[str], Decimal]):
-        """Start position monitoring task"""
         self._stop_monitoring = False
         self._monitoring_task = asyncio.create_task(
             self._monitor_positions(price_callback)
@@ -1463,7 +1257,6 @@ class RiskManager:
         logger.info("Position monitoring started")
     
     async def stop_monitoring(self):
-        """Stop position monitoring"""
         self._stop_monitoring = True
         if self._monitoring_task:
             self._monitoring_task.cancel()
@@ -1474,7 +1267,6 @@ class RiskManager:
         logger.info("Position monitoring stopped")
     
     async def _monitor_positions(self, price_callback: Callable[[str], Decimal]):
-        """Background task to monitor positions"""
         while not self._stop_monitoring:
             try:
                 all_positions = []
@@ -1535,10 +1327,7 @@ class RiskManager:
                 logger.error(f"Error in position monitoring: {e}")
                 await asyncio.sleep(10)
     
-    # ==================== BALANCE MANAGEMENT ====================
-    
     async def set_user_balance(self, user_id: int, balance: Decimal):
-        """Set user balance (called by trading system)"""
         self.user_balances[user_id] = balance
         
         stats = await self.get_daily_stats(user_id)
@@ -1547,13 +1336,9 @@ class RiskManager:
         stats.current_balance = balance
     
     async def get_user_balance(self, user_id: int) -> Decimal:
-        """Get cached user balance"""
         return self.user_balances.get(user_id, Decimal("0"))
     
-    # ==================== STATUS & REPORTING ====================
-    
     async def get_risk_status(self, user_id: int) -> Dict[str, Any]:
-        """Get comprehensive risk status for a user"""
         settings = await self.get_user_settings(user_id)
         stats = await self.get_daily_stats(user_id)
         cb = await self.get_circuit_breaker(user_id)
@@ -1577,18 +1362,10 @@ class RiskManager:
             "balance": str(self.user_balances.get(user_id, Decimal("0")))
         }
 
-
-# ==================== FACTORY FUNCTIONS ====================
-
 def create_risk_manager(token_scanner=None) -> RiskManager:
-    """Create a new RiskManager instance"""
     return RiskManager(token_scanner=token_scanner)
 
-
-# ==================== TESTING ====================
-
 async def test_risk_manager():
-    """Test the risk manager"""
     print("Testing Risk Manager...")
     
     rm = create_risk_manager()
@@ -1647,7 +1424,6 @@ async def test_risk_manager():
     print(f"After 5 failures: can_trade={can_trade}, reason={reason}")
     
     print("\nRisk Manager tests completed!")
-
 
 if __name__ == "__main__":
     asyncio.run(test_risk_manager())
