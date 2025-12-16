@@ -125,11 +125,11 @@ def parse_solana_error(error_data: Any) -> Tuple[str, Optional[int], List[str]]:
     logs = []
     error_code = None
     message = "Unknown error"
-    
+
     if isinstance(error_data, dict):
         if "logs" in error_data:
             logs = error_data["logs"]
-        
+
         if "err" in error_data:
             err = error_data["err"]
             if isinstance(err, dict):
@@ -151,7 +151,7 @@ def parse_solana_error(error_data: Any) -> Tuple[str, Optional[int], List[str]]:
             message = error_data["message"]
     elif isinstance(error_data, str):
         message = error_data
-    
+
     return message, error_code, logs
 
 def create_set_compute_unit_limit_instruction(units: int) -> Instruction:
@@ -183,17 +183,17 @@ class CachedBlockhash:
     blockhash: Hash
     last_valid_block_height: int
     fetched_at: float
-    
+
     def is_expired(self, max_age_seconds: float = 30) -> bool:
         return time.time() - self.fetched_at > max_age_seconds
 
 class BlockhashCache:
-    
+
     def __init__(self, max_age_seconds: float = 30):
         self.max_age = max_age_seconds
         self._cache: Optional[CachedBlockhash] = None
         self._lock = asyncio.Lock()
-    
+
     async def get_blockhash(
         self,
         client: AsyncClient,
@@ -202,19 +202,19 @@ class BlockhashCache:
         async with self._lock:
             if force_refresh or self._cache is None or self._cache.is_expired(self.max_age):
                 response = await client.get_latest_blockhash(commitment=Confirmed)
-                
+
                 if not response.value:
                     raise BlockhashNotFoundError("Failed to get recent blockhash")
-                
+
                 self._cache = CachedBlockhash(
                     blockhash=response.value.blockhash,
                     last_valid_block_height=response.value.last_valid_block_height,
                     fetched_at=time.time()
                 )
                 logger.debug(f"Fetched new blockhash: {self._cache.blockhash}")
-            
+
             return self._cache.blockhash, self._cache.last_valid_block_height
-    
+
     def invalidate(self):
         self._cache = None
 
@@ -236,7 +236,7 @@ class TransactionConfig:
     max_retries: int = DEFAULT_MAX_RETRIES
 
 class TransactionBuilder:
-    
+
     def __init__(
         self,
         fee_payer: Pubkey,
@@ -249,89 +249,89 @@ class TransactionBuilder:
         self.address_lookup_tables: List[AddressLookupTableAccount] = []
         self._blockhash: Optional[Hash] = None
         self._last_valid_block_height: Optional[int] = None
-    
+
     def add_instruction(self, instruction: Instruction) -> "TransactionBuilder":
         self.instructions.append(instruction)
         return self
-    
+
     def add_instructions(self, instructions: List[Instruction]) -> "TransactionBuilder":
         self.instructions.extend(instructions)
         return self
-    
+
     def add_signer(self, signer: Keypair) -> "TransactionBuilder":
         self.signers.append(signer)
         return self
-    
+
     def add_signers(self, signers: List[Keypair]) -> "TransactionBuilder":
         self.signers.extend(signers)
         return self
-    
+
     def add_address_lookup_table(
         self,
         table: AddressLookupTableAccount
     ) -> "TransactionBuilder":
         self.address_lookup_tables.append(table)
         return self
-    
+
     def set_compute_units(self, units: int) -> "TransactionBuilder":
         self.config.compute_units = units
         return self
-    
+
     def set_priority_fee(self, micro_lamports: int) -> "TransactionBuilder":
         self.config.compute_unit_price = micro_lamports
         return self
-    
+
     def set_blockhash(self, blockhash: Hash, last_valid_block_height: int) -> "TransactionBuilder":
         self._blockhash = blockhash
         self._last_valid_block_height = last_valid_block_height
         return self
-    
+
     async def fetch_blockhash(self, client: AsyncClient) -> "TransactionBuilder":
         self._blockhash, self._last_valid_block_height = await get_recent_blockhash(client)
         return self
-    
+
     def _build_instructions(self) -> List[Instruction]:
         instructions = []
-        
+
         if self.config.compute_units is not None:
             instructions.append(
                 create_set_compute_unit_limit_instruction(self.config.compute_units)
             )
-        
+
         if self.config.compute_unit_price is not None:
             instructions.append(
                 create_set_compute_unit_price_instruction(self.config.compute_unit_price)
             )
-        
+
         instructions.extend(self.instructions)
         return instructions
-    
+
     def build_legacy(self) -> Transaction:
         if not self._blockhash:
             raise TransactionBuildError("Blockhash not set. Call fetch_blockhash() first.")
-        
+
         if not self.instructions:
             raise TransactionBuildError("No instructions added to transaction.")
-        
+
         instructions = self._build_instructions()
-        
+
         tx = Transaction(
             fee_payer=self.fee_payer,
             recent_blockhash=self._blockhash,
             instructions=instructions
         )
-        
+
         return tx
-    
+
     def build_versioned(self) -> VersionedTransaction:
         if not self._blockhash:
             raise TransactionBuildError("Blockhash not set. Call fetch_blockhash() first.")
-        
+
         if not self.instructions:
             raise TransactionBuildError("No instructions added to transaction.")
-        
+
         instructions = self._build_instructions()
-        
+
         if self.address_lookup_tables:
             message = MessageV0.try_compile(
                 payer=self.fee_payer,
@@ -346,19 +346,19 @@ class TransactionBuilder:
                 address_lookup_table_accounts=[],
                 recent_blockhash=self._blockhash
             )
-        
+
         tx = VersionedTransaction(message, [])
         return tx
-    
+
     async def build(self, client: Optional[AsyncClient] = None) -> Union[Transaction, VersionedTransaction]:
         if not self._blockhash and client:
             await self.fetch_blockhash(client)
-        
+
         if self.config.use_versioned:
             return self.build_versioned()
         else:
             return self.build_legacy()
-    
+
     def clear(self) -> "TransactionBuilder":
         self.instructions.clear()
         self.signers.clear()
@@ -412,27 +412,27 @@ async def send_transaction(
         preflight_commitment=Commitment(preflight_commitment.value),
         max_retries=0
     )
-    
+
     last_error = None
-    
+
     for attempt in range(max_retries + 1):
         try:
             if isinstance(tx, VersionedTransaction):
                 response = await client.send_transaction(tx, opts=opts)
             else:
                 response = await client.send_transaction(tx, opts=opts)
-            
+
             if hasattr(response, 'value') and response.value:
                 signature = response.value
                 logger.info(f"Transaction sent: {signature}")
                 return signature
             else:
                 raise TransactionSendError("Empty response from send_transaction")
-                
+
         except Exception as e:
             last_error = e
             error_str = str(e).lower()
-            
+
             retryable = any(x in error_str for x in [
                 "blockhash not found",
                 "rate limit",
@@ -442,14 +442,14 @@ async def send_transaction(
                 "503",
                 "504"
             ])
-            
+
             if not retryable or attempt == max_retries:
                 break
-            
+
             wait_time = retry_delay * (2 ** attempt) + random.uniform(0, 0.1)
             logger.warning(f"Transaction send failed (attempt {attempt + 1}), retrying in {wait_time:.2f}s: {e}")
             await asyncio.sleep(wait_time)
-    
+
     message, error_code, logs = parse_solana_error(str(last_error))
     raise TransactionSendError(message, error_code, logs)
 
@@ -463,12 +463,12 @@ async def send_raw_transaction(
         skip_preflight=skip_preflight,
         preflight_commitment=Commitment(preflight_commitment.value)
     )
-    
+
     response = await client.send_raw_transaction(raw_tx, opts=opts)
-    
+
     if hasattr(response, 'value') and response.value:
         return response.value
-    
+
     raise TransactionSendError("Failed to send raw transaction")
 
 async def confirm_transaction(
@@ -479,11 +479,11 @@ async def confirm_transaction(
     poll_interval: float = 0.5
 ) -> TransactionStatus:
     start_time = time.time()
-    
+
     while time.time() - start_time < timeout:
         try:
             status = await get_transaction_status(client, signature, commitment)
-            
+
             if status == TransactionStatus.CONFIRMED:
                 logger.info(f"Transaction confirmed: {signature}")
                 return status
@@ -494,9 +494,9 @@ async def confirm_transaction(
                 raise TransactionConfirmError(f"Transaction failed: {signature}")
             elif status == TransactionStatus.EXPIRED:
                 raise TransactionExpiredError(f"Transaction expired: {signature}")
-            
+
             await asyncio.sleep(poll_interval)
-            
+
         except TransactionConfirmError:
             raise
         except TransactionExpiredError:
@@ -504,7 +504,7 @@ async def confirm_transaction(
         except Exception as e:
             logger.warning(f"Error checking transaction status: {e}")
             await asyncio.sleep(poll_interval)
-    
+
     raise TransactionConfirmError(f"Transaction confirmation timeout after {timeout}s: {signature}")
 
 async def get_transaction_status(
@@ -514,15 +514,15 @@ async def get_transaction_status(
 ) -> TransactionStatus:
     try:
         response = await client.get_signature_statuses([signature])
-        
+
         if not response.value or not response.value[0]:
             return TransactionStatus.NOT_FOUND
-        
+
         status = response.value[0]
-        
+
         if status.err:
             return TransactionStatus.FAILED
-        
+
         if status.confirmation_status:
             status_str = str(status.confirmation_status).lower()
             if "finalized" in status_str:
@@ -531,9 +531,9 @@ async def get_transaction_status(
                 return TransactionStatus.CONFIRMED
             elif "processed" in status_str:
                 return TransactionStatus.PENDING
-        
+
         return TransactionStatus.PENDING
-        
+
     except Exception as e:
         logger.error(f"Error getting transaction status: {e}")
         return TransactionStatus.NOT_FOUND
@@ -571,7 +571,7 @@ async def simulate_transaction(
             sig_verify=sig_verify,
             replace_recent_blockhash=replace_recent_blockhash
         )
-        
+
         if not response.value:
             return SimulationResult(
                 success=False,
@@ -580,9 +580,9 @@ async def simulate_transaction(
                 error="Empty simulation response",
                 accounts=None
             )
-        
+
         result = response.value
-        
+
         return SimulationResult(
             success=result.err is None,
             logs=result.logs or [],
@@ -590,7 +590,7 @@ async def simulate_transaction(
             error=str(result.err) if result.err else None,
             accounts=result.accounts
         )
-        
+
     except Exception as e:
         return SimulationResult(
             success=False,
@@ -606,15 +606,15 @@ async def estimate_compute_units(
     buffer_percent: float = 20
 ) -> int:
     result = await simulate_transaction(client, tx)
-    
+
     if not result.success:
         logger.warning(f"Simulation failed: {result.error}")
         return DEFAULT_COMPUTE_UNITS
-    
+
     if result.units_consumed:
         buffered = int(result.units_consumed * (1 + buffer_percent / 100))
         return min(buffered, 1_400_000)
-    
+
     return DEFAULT_COMPUTE_UNITS
 
 async def estimate_priority_fee(
@@ -627,20 +627,20 @@ async def estimate_priority_fee(
             response = await client.get_recent_prioritization_fees(account_keys)
         else:
             response = await client.get_recent_prioritization_fees([])
-        
+
         if not response.value:
             return DEFAULT_COMPUTE_UNIT_PRICE
-        
+
         fees = [f.prioritization_fee for f in response.value if f.prioritization_fee > 0]
-        
+
         if not fees:
             return DEFAULT_COMPUTE_UNIT_PRICE
-        
+
         fees.sort()
         idx = min(len(fees) - 1, int(len(fees) * percentile / 100))
-        
+
         return max(fees[idx], DEFAULT_COMPUTE_UNIT_PRICE)
-        
+
     except Exception as e:
         logger.warning(f"Error estimating priority fee: {e}")
         return DEFAULT_COMPUTE_UNIT_PRICE
@@ -653,7 +653,7 @@ class JitoBundleResult:
     error: Optional[str] = None
 
 class JitoClient:
-    
+
     def __init__(
         self,
         region: JitoRegion = JitoRegion.MAINNET,
@@ -663,7 +663,7 @@ class JitoClient:
         self.api_key = api_key
         self.endpoint = JITO_ENDPOINTS[region]
         self._session: Optional[aiohttp.ClientSession] = None
-    
+
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             headers = {"Content-Type": "application/json"}
@@ -671,20 +671,20 @@ class JitoClient:
                 headers["Authorization"] = f"Bearer {self.api_key}"
             self._session = aiohttp.ClientSession(headers=headers)
         return self._session
-    
+
     async def close(self):
         if self._session and not self._session.closed:
             await self._session.close()
-    
+
     async def __aenter__(self):
         return self
-    
+
     async def __aexit__(self, *args):
         await self.close()
-    
+
     def get_random_tip_account(self) -> Pubkey:
         return Pubkey.from_string(random.choice(JITO_TIP_ACCOUNTS))
-    
+
     def create_tip_instruction(
         self,
         payer: Pubkey,
@@ -693,7 +693,7 @@ class JitoClient:
     ) -> Instruction:
         if tip_account is None:
             tip_account = self.get_random_tip_account()
-        
+
         return transfer(
             TransferParams(
                 from_pubkey=payer,
@@ -701,14 +701,14 @@ class JitoClient:
                 lamports=tip_lamports
             )
         )
-    
+
     async def send_bundle(
         self,
         transactions: List[Union[Transaction, VersionedTransaction]],
         timeout: float = 30
     ) -> JitoBundleResult:
         session = await self._get_session()
-        
+
         serialized = []
         for tx in transactions:
             if isinstance(tx, VersionedTransaction):
@@ -716,14 +716,14 @@ class JitoClient:
             else:
                 raw = tx.serialize()
             serialized.append(base64.b64encode(raw).decode())
-        
+
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "sendBundle",
             "params": [serialized]
         }
-        
+
         try:
             async with session.post(
                 f"{self.endpoint}/api/v1/bundles",
@@ -731,35 +731,35 @@ class JitoClient:
                 timeout=aiohttp.ClientTimeout(total=timeout)
             ) as response:
                 data = await response.json()
-                
+
                 if "error" in data:
                     error = data["error"]
                     raise JitoError(f"Bundle submission failed: {error}")
-                
+
                 bundle_id = data.get("result", "")
-                
+
                 return JitoBundleResult(
                     bundle_id=bundle_id,
                     status="submitted"
                 )
-                
+
         except aiohttp.ClientError as e:
             raise JitoError(f"Network error sending bundle: {e}")
-    
+
     async def get_bundle_status(
         self,
         bundle_id: str,
         timeout: float = 10
     ) -> JitoBundleResult:
         session = await self._get_session()
-        
+
         payload = {
             "jsonrpc": "2.0",
             "id": 1,
             "method": "getBundleStatuses",
             "params": [[bundle_id]]
         }
-        
+
         try:
             async with session.post(
                 f"{self.endpoint}/api/v1/bundles",
@@ -767,37 +767,37 @@ class JitoClient:
                 timeout=aiohttp.ClientTimeout(total=timeout)
             ) as response:
                 data = await response.json()
-                
+
                 if "error" in data:
                     return JitoBundleResult(
                         bundle_id=bundle_id,
                         status="unknown",
                         error=str(data["error"])
                     )
-                
+
                 results = data.get("result", {}).get("value", [])
-                
+
                 if not results:
                     return JitoBundleResult(
                         bundle_id=bundle_id,
                         status="pending"
                     )
-                
+
                 status_data = results[0]
-                
+
                 return JitoBundleResult(
                     bundle_id=bundle_id,
                     status=status_data.get("confirmation_status", "pending"),
                     landed_slot=status_data.get("slot")
                 )
-                
+
         except aiohttp.ClientError as e:
             return JitoBundleResult(
                 bundle_id=bundle_id,
                 status="unknown",
                 error=str(e)
             )
-    
+
     async def send_and_confirm_bundle(
         self,
         transactions: List[Union[Transaction, VersionedTransaction]],
@@ -805,22 +805,22 @@ class JitoClient:
         poll_interval: float = 1.0
     ) -> JitoBundleResult:
         result = await self.send_bundle(transactions)
-        
+
         if result.error:
             return result
-        
+
         start_time = time.time()
-        
+
         while time.time() - start_time < timeout:
             status = await self.get_bundle_status(result.bundle_id)
-            
+
             if status.status in ["confirmed", "finalized", "landed"]:
                 return status
             elif status.error:
                 return status
-            
+
             await asyncio.sleep(poll_interval)
-        
+
         return JitoBundleResult(
             bundle_id=result.bundle_id,
             status="timeout",
@@ -858,23 +858,23 @@ async def build_and_send_transaction(
         use_versioned=use_versioned,
         skip_preflight=skip_preflight
     )
-    
+
     builder = TransactionBuilder(payer.pubkey(), config)
     builder.add_instructions(instructions)
-    
+
     if signers:
         builder.add_signers(signers)
-    
+
     await builder.fetch_blockhash(client)
     tx = await builder.build()
-    
+
     all_signers = [payer] + (signers or [])
-    
+
     if use_versioned:
         tx = sign_versioned_transaction_multi(tx, all_signers)
     else:
         tx = sign_transaction_multi(tx, all_signers)
-    
+
     if confirm:
         signature, status = await send_and_confirm_transaction(
             client, tx, skip_preflight, commitment
@@ -885,7 +885,7 @@ async def build_and_send_transaction(
         return signature, None
 
 class TransactionManager:
-    
+
     def __init__(
         self,
         client: AsyncClient,
@@ -896,16 +896,16 @@ class TransactionManager:
         self.payer = payer
         self.default_config = default_config or TransactionConfig()
         self.blockhash_cache = BlockhashCache()
-    
+
     async def get_blockhash(self, force_refresh: bool = False) -> Tuple[Hash, int]:
         return await self.blockhash_cache.get_blockhash(self.client, force_refresh)
-    
+
     def create_builder(self, config: Optional[TransactionConfig] = None) -> TransactionBuilder:
         return TransactionBuilder(
             self.payer.pubkey(),
             config or self.default_config
         )
-    
+
     async def send(
         self,
         tx: Union[Transaction, VersionedTransaction],
@@ -916,7 +916,7 @@ class TransactionManager:
             tx,
             skip_preflight=skip_preflight or self.default_config.skip_preflight
         )
-    
+
     async def confirm(
         self,
         signature: Signature,
@@ -929,7 +929,7 @@ class TransactionManager:
             commitment,
             timeout
         )
-    
+
     async def send_and_confirm(
         self,
         tx: Union[Transaction, VersionedTransaction],
@@ -944,13 +944,13 @@ class TransactionManager:
             commitment=commitment,
             timeout=timeout
         )
-    
+
     async def simulate(
         self,
         tx: Union[Transaction, VersionedTransaction]
     ) -> SimulationResult:
         return await simulate_transaction(self.client, tx)
-    
+
     async def estimate_fees(
         self,
         instructions: List[Instruction],
@@ -960,22 +960,22 @@ class TransactionManager:
         builder.add_instructions(instructions)
         await builder.fetch_blockhash(self.client)
         tx = await builder.build()
-        
+
         if isinstance(tx, VersionedTransaction):
             tx = sign_versioned_transaction(tx, self.payer)
         else:
             tx = sign_transaction(tx, self.payer)
-        
+
         compute_units = await estimate_compute_units(self.client, tx)
         priority_fee = await estimate_priority_fee(self.client, account_keys)
-        
+
         return compute_units, priority_fee
 
 __all__ = [
     "CommitmentLevel",
     "TransactionStatus",
     "JitoRegion",
-    
+
     "TransactionError",
     "TransactionBuildError",
     "TransactionSignError",
@@ -986,45 +986,45 @@ __all__ = [
     "InsufficientFundsError",
     "JitoError",
     "BlockhashNotFoundError",
-    
+
     "TransactionConfig",
     "SimulationResult",
     "JitoBundleResult",
     "CachedBlockhash",
-    
+
     "TransactionBuilder",
-    
+
     "sign_transaction",
     "sign_transaction_multi",
     "sign_versioned_transaction",
     "sign_versioned_transaction_multi",
-    
+
     "send_transaction",
     "send_raw_transaction",
     "send_with_jito",
-    
+
     "confirm_transaction",
     "get_transaction_status",
     "send_and_confirm_transaction",
-    
+
     "simulate_transaction",
     "estimate_compute_units",
     "estimate_priority_fee",
-    
+
     "get_recent_blockhash",
     "BlockhashCache",
-    
+
     "create_set_compute_unit_limit_instruction",
     "create_set_compute_unit_price_instruction",
     "create_request_heap_frame_instruction",
-    
+
     "JitoClient",
     "JITO_ENDPOINTS",
     "JITO_TIP_ACCOUNTS",
-    
+
     "build_and_send_transaction",
     "TransactionManager",
-    
+
     "parse_solana_error",
     "SOLANA_ERROR_CODES",
 ]
