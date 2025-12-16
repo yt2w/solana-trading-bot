@@ -30,7 +30,7 @@ T = TypeVar("T")
 F = TypeVar("F", bound=Callable[..., Any])
 
 class RetryError(Exception):
-    
+
     def __init__(
         self,
         message: str,
@@ -70,7 +70,7 @@ class RetryConfig:
     timeout: Optional[float] = None
     retry_error_codes: Set[int] = field(default_factory=set)
     non_retry_error_codes: Set[int] = field(default_factory=set)
-    
+
     def __post_init__(self):
         if self.max_retries < 0:
             raise ValueError("max_retries must be >= 0")
@@ -82,11 +82,11 @@ class RetryConfig:
             raise ValueError("jitter_factor must be between 0 and 1")
 
 class BackoffStrategy(ABC):
-    
+
     @abstractmethod
     def get_delay(self, attempt: int, config: RetryConfig) -> float:
         pass
-    
+
     def _apply_jitter(self, delay: float, config: RetryConfig) -> float:
         if config.jitter and config.jitter_factor > 0:
             jitter_range = delay * config.jitter_factor
@@ -94,52 +94,52 @@ class BackoffStrategy(ABC):
         return max(0, min(delay, config.max_delay))
 
 class ExponentialBackoff(BackoffStrategy):
-    
+
     def get_delay(self, attempt: int, config: RetryConfig) -> float:
         delay = config.base_delay * (config.exponential_base ** (attempt - 1))
         return self._apply_jitter(min(delay, config.max_delay), config)
 
 class LinearBackoff(BackoffStrategy):
-    
+
     def get_delay(self, attempt: int, config: RetryConfig) -> float:
         delay = config.base_delay * attempt
         return self._apply_jitter(min(delay, config.max_delay), config)
 
 class ConstantBackoff(BackoffStrategy):
-    
+
     def get_delay(self, attempt: int, config: RetryConfig) -> float:
         return self._apply_jitter(config.base_delay, config)
 
 class FibonacciBackoff(BackoffStrategy):
-    
+
     def __init__(self):
         self._cache: Dict[int, int] = {0: 0, 1: 1}
-    
+
     def _fibonacci(self, n: int) -> int:
         if n not in self._cache:
             self._cache[n] = self._fibonacci(n - 1) + self._fibonacci(n - 2)
         return self._cache[n]
-    
+
     def get_delay(self, attempt: int, config: RetryConfig) -> float:
         fib = self._fibonacci(attempt)
         delay = config.base_delay * fib
         return self._apply_jitter(min(delay, config.max_delay), config)
 
 class DecorrelatedJitter(BackoffStrategy):
-    
+
     def __init__(self):
         self._previous_delay: Optional[float] = None
-    
+
     def get_delay(self, attempt: int, config: RetryConfig) -> float:
         if attempt == 1 or self._previous_delay is None:
             self._previous_delay = config.base_delay
             return config.base_delay
-        
+
         delay = random.uniform(config.base_delay, self._previous_delay * 3)
         delay = min(delay, config.max_delay)
         self._previous_delay = delay
         return delay
-    
+
     def reset(self):
         self._previous_delay = None
 
@@ -153,7 +153,7 @@ BACKOFF_STRATEGIES: Dict[str, Type[BackoffStrategy]] = {
 
 @dataclass
 class RetryStatistics:
-    
+
     total_attempts: int = 0
     successful_attempts: int = 0
     failed_attempts: int = 0
@@ -163,36 +163,36 @@ class RetryStatistics:
     last_exception: Optional[Exception] = None
     last_success_time: Optional[float] = None
     last_failure_time: Optional[float] = None
-    
+
     def record_attempt(self, success: bool, retries: int, delay_time: float):
         self.total_attempts += 1
         self.total_retries += retries
         self.total_delay_time += delay_time
-        
+
         if success:
             self.successful_attempts += 1
             self.last_success_time = time.time()
         else:
             self.failed_attempts += 1
             self.last_failure_time = time.time()
-    
+
     def record_exception(self, exc: Exception):
         exc_type = type(exc).__name__
         self.exceptions_by_type[exc_type] = self.exceptions_by_type.get(exc_type, 0) + 1
         self.last_exception = exc
-    
+
     @property
     def success_rate(self) -> float:
         if self.total_attempts == 0:
             return 0.0
         return (self.successful_attempts / self.total_attempts) * 100
-    
+
     @property
     def average_retries(self) -> float:
         if self.total_attempts == 0:
             return 0.0
         return self.total_retries / self.total_attempts
-    
+
     def reset(self):
         self.total_attempts = 0
         self.successful_attempts = 0
@@ -205,7 +205,7 @@ class RetryStatistics:
         self.last_failure_time = None
 
 class RetryBudget:
-    
+
     def __init__(
         self,
         max_retries_per_window: int = 100,
@@ -217,34 +217,34 @@ class RetryBudget:
         self.min_retries_per_second = min_retries_per_second
         self._retry_times: Deque[float] = deque()
         self._lock = asyncio.Lock()
-    
+
     def _cleanup_old_entries(self):
         cutoff = time.time() - self.window_seconds
         while self._retry_times and self._retry_times[0] < cutoff:
             self._retry_times.popleft()
-    
+
     def can_retry(self) -> bool:
         self._cleanup_old_entries()
         if len(self._retry_times) < self.min_retries_per_second * self.window_seconds:
             return True
         return len(self._retry_times) < self.max_retries_per_window
-    
+
     def record_retry(self):
         self._cleanup_old_entries()
         self._retry_times.append(time.time())
-    
+
     async def acquire(self) -> bool:
         async with self._lock:
             if self.can_retry():
                 self.record_retry()
                 return True
             return False
-    
+
     @property
     def current_usage(self) -> int:
         self._cleanup_old_entries()
         return len(self._retry_times)
-    
+
     @property
     def remaining_budget(self) -> int:
         return max(0, self.max_retries_per_window - self.current_usage)
@@ -256,20 +256,20 @@ def should_retry(
 ) -> bool:
     if attempt >= config.max_retries:
         return False
-    
+
     if isinstance(exception, config.non_retryable_exceptions):
         return False
-    
+
     error_code = getattr(exception, "code", None) or getattr(exception, "error_code", None)
     if error_code is not None:
         if error_code in config.non_retry_error_codes:
             return False
         if config.retry_error_codes and error_code not in config.retry_error_codes:
             return False
-    
+
     if isinstance(exception, config.retryable_exceptions):
         return True
-    
+
     return False
 
 def calculate_delay(
@@ -293,7 +293,7 @@ def get_exception_info(exc: Exception) -> Dict[str, Any]:
     return info
 
 class RetryContext(Generic[T]):
-    
+
     def __init__(
         self,
         config: Optional[RetryConfig] = None,
@@ -311,26 +311,26 @@ class RetryContext(Generic[T]):
         self.on_failure = on_failure
         self.budget = budget
         self.statistics = statistics or RetryStatistics()
-        
+
         self._attempt = 0
         self._start_time: Optional[float] = None
         self._last_exception: Optional[Exception] = None
         self._total_delay = 0.0
-    
+
     async def __aenter__(self) -> "RetryContext[T]":
         self._start_time = time.time()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
-    
+
     def __enter__(self) -> "RetryContext[T]":
         self._start_time = time.time()
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
-    
+
     async def execute(
         self,
         func: Callable[..., Awaitable[T]],
@@ -339,10 +339,10 @@ class RetryContext(Generic[T]):
     ) -> T:
         self._attempt = 0
         self._total_delay = 0.0
-        
+
         while True:
             self._attempt += 1
-            
+
             if self.config.timeout and self._start_time:
                 elapsed = time.time() - self._start_time
                 if elapsed >= self.config.timeout:
@@ -353,23 +353,23 @@ class RetryContext(Generic[T]):
                         self._attempt,
                         elapsed,
                     )
-            
+
             try:
                 result = await func(*args, **kwargs)
-                
+
                 if self.config.retry_on_result and self.config.retry_on_result(result):
                     if self._attempt <= self.config.max_retries:
                         delay = self._wait_before_retry(None)
                         await asyncio.sleep(delay)
                         continue
-                
+
                 self._handle_success(result)
                 return result
-                
+
             except Exception as e:
                 self._last_exception = e
                 self.statistics.record_exception(e)
-                
+
                 if not should_retry(e, self.config, self._attempt):
                     self._handle_failure()
                     if isinstance(e, self.config.non_retryable_exceptions):
@@ -385,7 +385,7 @@ class RetryContext(Generic[T]):
                         self._attempt,
                         self._total_delay,
                     ) from e
-                
+
                 if self.budget and not await self.budget.acquire():
                     self._handle_failure()
                     raise RetryBudgetExceededError(
@@ -394,10 +394,10 @@ class RetryContext(Generic[T]):
                         self._attempt,
                         self._total_delay,
                     ) from e
-                
+
                 delay = self._wait_before_retry(e)
                 await asyncio.sleep(delay)
-    
+
     def execute_sync(
         self,
         func: Callable[..., T],
@@ -406,10 +406,10 @@ class RetryContext(Generic[T]):
     ) -> T:
         self._attempt = 0
         self._total_delay = 0.0
-        
+
         while True:
             self._attempt += 1
-            
+
             if self.config.timeout and self._start_time:
                 elapsed = time.time() - self._start_time
                 if elapsed >= self.config.timeout:
@@ -420,23 +420,23 @@ class RetryContext(Generic[T]):
                         self._attempt,
                         elapsed,
                     )
-            
+
             try:
                 result = func(*args, **kwargs)
-                
+
                 if self.config.retry_on_result and self.config.retry_on_result(result):
                     if self._attempt <= self.config.max_retries:
                         delay = self._wait_before_retry(None)
                         time.sleep(delay)
                         continue
-                
+
                 self._handle_success(result)
                 return result
-                
+
             except Exception as e:
                 self._last_exception = e
                 self.statistics.record_exception(e)
-                
+
                 if not should_retry(e, self.config, self._attempt):
                     self._handle_failure()
                     raise RetryExhaustedError(
@@ -445,14 +445,14 @@ class RetryContext(Generic[T]):
                         self._attempt,
                         self._total_delay,
                     ) from e
-                
+
                 delay = self._wait_before_retry(e)
                 time.sleep(delay)
-    
+
     def _wait_before_retry(self, exception: Optional[Exception]) -> float:
         delay = self.strategy.get_delay(self._attempt, self.config)
         self._total_delay += delay
-        
+
         logger.warning(
             "Retry attempt %d/%d after %.2fs delay. Exception: %s",
             self._attempt,
@@ -460,46 +460,46 @@ class RetryContext(Generic[T]):
             delay,
             exception,
         )
-        
+
         if self.on_retry:
             self.on_retry(self._attempt, exception, delay)
-        
+
         return delay
-    
+
     def _handle_success(self, result: T):
         self.statistics.record_attempt(True, self._attempt - 1, self._total_delay)
-        
+
         if self._attempt > 1:
             logger.info(
                 "Operation succeeded after %d attempts (%.2fs total delay)",
                 self._attempt,
                 self._total_delay,
             )
-        
+
         if self.on_success:
             self.on_success(result, self._attempt)
-    
+
     def _handle_failure(self):
         self.statistics.record_attempt(False, self._attempt - 1, self._total_delay)
-        
+
         logger.error(
             "Operation failed after %d attempts (%.2fs total delay). Last error: %s",
             self._attempt,
             self._total_delay,
             self._last_exception,
         )
-        
+
         if self.on_failure and self._last_exception:
             self.on_failure(self._last_exception, self._attempt)
-    
+
     @property
     def attempts(self) -> int:
         return self._attempt
-    
+
     @property
     def last_exception(self) -> Optional[Exception]:
         return self._last_exception
-    
+
     @property
     def total_delay(self) -> float:
         return self._total_delay
@@ -522,7 +522,7 @@ def retry(
         jitter=jitter,
         retryable_exceptions=exceptions,
     )
-    
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -533,9 +533,9 @@ def retry(
             )
             with ctx:
                 return ctx.execute_sync(func, *args, **kwargs)
-        
+
         return wrapper
-    
+
     return decorator
 
 def async_retry(
@@ -556,7 +556,7 @@ def async_retry(
         jitter=jitter,
         retryable_exceptions=exceptions,
     )
-    
+
     def decorator(func: F) -> F:
         @functools.wraps(func)
         async def wrapper(*args, **kwargs):
@@ -567,9 +567,9 @@ def async_retry(
             )
             async with ctx:
                 return await ctx.execute(func, *args, **kwargs)
-        
+
         return wrapper
-    
+
     return decorator
 
 def retry_on_exception(
@@ -579,13 +579,13 @@ def retry_on_exception(
 ) -> Callable[[F], F]:
     if not exceptions:
         exceptions = (Exception,)
-    
+
     config = RetryConfig(
         max_retries=max_retries,
         base_delay=base_delay,
         retryable_exceptions=exceptions,
     )
-    
+
     def decorator(func: F) -> F:
         if asyncio.iscoroutinefunction(func):
             @functools.wraps(func)
@@ -601,7 +601,7 @@ def retry_on_exception(
                 with ctx:
                     return ctx.execute_sync(func, *args, **kwargs)
             return sync_wrapper
-    
+
     return decorator
 
 def retry_with_fallback(
@@ -615,7 +615,7 @@ def retry_with_fallback(
         base_delay=base_delay,
         retryable_exceptions=exceptions,
     )
-    
+
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         if asyncio.iscoroutinefunction(func):
             @functools.wraps(func)
@@ -647,7 +647,7 @@ def retry_with_fallback(
                     )
                     return fallback_fn(*args, **kwargs)
             return sync_wrapper
-    
+
     return decorator
 
 def with_retry(
@@ -657,7 +657,7 @@ def with_retry(
 ) -> Callable[..., T]:
     config = config or RetryConfig()
     strategy = strategy or ExponentialBackoff()
-    
+
     if asyncio.iscoroutinefunction(func):
         @functools.wraps(func)
         async def async_wrapped(*args, **kwargs) -> T:
@@ -761,7 +761,7 @@ CACHE_RETRY_POLICY = RetryConfig(
 )
 
 class RetryBuilder:
-    
+
     def __init__(self):
         self._max_retries = 3
         self._base_delay = 1.0
@@ -777,11 +777,11 @@ class RetryBuilder:
         self._non_retry_error_codes: Set[int] = set()
         self._timeout: Optional[float] = None
         self._retry_on_result: Optional[Callable[[Any], bool]] = None
-    
+
     def with_max_retries(self, n: int) -> "RetryBuilder":
         self._max_retries = n
         return self
-    
+
     def with_exponential_backoff(
         self,
         base: float = 1.0,
@@ -792,47 +792,47 @@ class RetryBuilder:
         self._max_delay = max
         self._exponential_base = exponential_base
         return self
-    
+
     def with_linear_backoff(self, base: float = 1.0, max: float = 60.0) -> "RetryBuilder":
         self._base_delay = base
         self._max_delay = max
         self._exponential_base = 1.0
         return self
-    
+
     def with_constant_delay(self, delay: float) -> "RetryBuilder":
         self._base_delay = delay
         self._max_delay = delay
         return self
-    
+
     def with_jitter(self, enabled: bool = True, factor: float = 0.5) -> "RetryBuilder":
         self._jitter = enabled
         self._jitter_factor = factor
         return self
-    
+
     def retry_on(self, *exceptions: Type[Exception]) -> "RetryBuilder":
         self._retryable_exceptions = list(exceptions)
         return self
-    
+
     def never_retry_on(self, *exceptions: Type[Exception]) -> "RetryBuilder":
         self._non_retryable_exceptions = list(exceptions)
         return self
-    
+
     def retry_on_codes(self, *codes: int) -> "RetryBuilder":
         self._retry_error_codes = set(codes)
         return self
-    
+
     def never_retry_on_codes(self, *codes: int) -> "RetryBuilder":
         self._non_retry_error_codes = set(codes)
         return self
-    
+
     def with_timeout(self, seconds: float) -> "RetryBuilder":
         self._timeout = seconds
         return self
-    
+
     def retry_if_result(self, predicate: Callable[[Any], bool]) -> "RetryBuilder":
         self._retry_on_result = predicate
         return self
-    
+
     def build(self) -> RetryConfig:
         return RetryConfig(
             max_retries=self._max_retries,
