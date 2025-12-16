@@ -94,7 +94,7 @@ class AlertConfig:
     last_triggered: Optional[datetime] = None
     trigger_count: int = 0
     extra_data: Dict[str, Any] = field(default_factory=dict)
-    
+
     def __post_init__(self):
         if isinstance(self.alert_type, str):
             self.alert_type = AlertType(self.alert_type)
@@ -106,21 +106,21 @@ class AlertConfig:
             self.priority = AlertPriority(int(self.priority)) if isinstance(self.priority, str) else AlertPriority(self.priority)
         if self.notification_channels and isinstance(self.notification_channels[0], str):
             self.notification_channels = [NotificationChannel(c) for c in self.notification_channels]
-    
+
     def is_expired(self) -> bool:
         if self.expires_at is None:
             return False
         return datetime.utcnow() > self.expires_at
-    
+
     def is_on_cooldown(self) -> bool:
         if self.last_triggered is None:
             return False
         cooldown_end = self.last_triggered + timedelta(seconds=self.cooldown_seconds)
         return datetime.utcnow() < cooldown_end
-    
+
     def can_trigger(self) -> bool:
         return self.active and not self.is_expired() and not self.is_on_cooldown()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data['alert_type'] = self.alert_type.value
@@ -133,7 +133,7 @@ class AlertConfig:
         data['expires_at'] = self.expires_at.isoformat() if self.expires_at else None
         data['last_triggered'] = self.last_triggered.isoformat() if self.last_triggered else None
         return data
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AlertConfig':
         if 'created_at' in data and isinstance(data['created_at'], str):
@@ -160,7 +160,7 @@ class TriggeredAlert:
     notification_sent: bool = False
     notification_channels_sent: List[NotificationChannel] = field(default_factory=list)
     extra_data: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         data = asdict(self)
         data['alert_type'] = self.alert_type.value
@@ -168,7 +168,7 @@ class TriggeredAlert:
         data['notification_channels_sent'] = [c.value for c in self.notification_channels_sent]
         return data
 
-@dataclass 
+@dataclass
 class DoNotDisturbConfig:
     enabled: bool = False
     start_hour: int = 22
@@ -184,26 +184,26 @@ class RateLimitConfig:
     burst_limit: int = 5
 
 class NotificationProvider(ABC):
-    
+
     @abstractmethod
     async def send(self, user_id: str, message: str, **kwargs) -> bool:
         pass
-    
+
     @abstractmethod
     def format_message(self, alert: TriggeredAlert, detailed: bool = False) -> str:
         pass
 
 class TelegramNotificationProvider(NotificationProvider):
-    
+
     def __init__(self, bot_token: str, default_chat_id: Optional[str] = None):
         self.bot_token = bot_token
         self.default_chat_id = default_chat_id
         self.api_base = f"https://api.telegram.org/bot{bot_token}"
-    
-    async def send(self, user_id: str, message: str, chat_id: Optional[str] = None, 
+
+    async def send(self, user_id: str, message: str, chat_id: Optional[str] = None,
                    parse_mode: str = "HTML", **kwargs) -> bool:
         target_chat = chat_id or self.default_chat_id or user_id
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {
@@ -212,7 +212,7 @@ class TelegramNotificationProvider(NotificationProvider):
                     "parse_mode": parse_mode,
                     "disable_web_page_preview": kwargs.get("disable_preview", True)
                 }
-                
+
                 async with session.post(
                     f"{self.api_base}/sendMessage",
                     json=payload,
@@ -228,7 +228,7 @@ class TelegramNotificationProvider(NotificationProvider):
         except Exception as e:
             logger.error(f"Telegram notification error: {e}")
             return False
-    
+
     def format_message(self, alert: TriggeredAlert, detailed: bool = False) -> str:
         emoji_map = {
             AlertType.PRICE_ABOVE: "[UP]",
@@ -245,9 +245,9 @@ class TelegramNotificationProvider(NotificationProvider):
             AlertType.LP_ADDED: "[LP+]",
             AlertType.LP_REMOVED: "[LP-]",
         }
-        
+
         emoji = emoji_map.get(alert.alert_type, "[ALERT]")
-        
+
         if detailed:
             token_display = "N/A"
             if alert.token_mint:
@@ -260,21 +260,21 @@ class TelegramNotificationProvider(NotificationProvider):
             msg += f"\n{alert.message}"
         else:
             msg = f"{emoji} {alert.message}"
-        
+
         return msg
 
 class WebhookNotificationProvider(NotificationProvider):
-    
+
     def __init__(self, default_url: Optional[str] = None, headers: Optional[Dict] = None):
         self.default_url = default_url
         self.headers = headers or {"Content-Type": "application/json"}
-    
+
     async def send(self, user_id: str, message: str, webhook_url: Optional[str] = None, **kwargs) -> bool:
         url = webhook_url or self.default_url
         if not url:
             logger.error("No webhook URL provided")
             return False
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {
@@ -283,7 +283,7 @@ class WebhookNotificationProvider(NotificationProvider):
                     "timestamp": datetime.utcnow().isoformat(),
                     **kwargs
                 }
-                
+
                 async with session.post(
                     url,
                     json=payload,
@@ -300,66 +300,66 @@ class WebhookNotificationProvider(NotificationProvider):
         except Exception as e:
             logger.error(f"Webhook error: {e}")
             return False
-    
+
     def format_message(self, alert: TriggeredAlert, detailed: bool = False) -> str:
         return json.dumps(alert.to_dict())
 
 class DiscordNotificationProvider(NotificationProvider):
-    
+
     def __init__(self, webhook_url: Optional[str] = None):
         self.webhook_url = webhook_url
-    
+
     async def send(self, user_id: str, message: str, webhook_url: Optional[str] = None, **kwargs) -> bool:
         url = webhook_url or self.webhook_url
         if not url:
             logger.error("No Discord webhook URL")
             return False
-        
+
         try:
             async with aiohttp.ClientSession() as session:
                 payload = {
                     "content": message,
                     "username": kwargs.get("username", "Trading Bot"),
                 }
-                
+
                 if kwargs.get("embed"):
                     payload["embeds"] = [kwargs["embed"]]
-                
+
                 async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=10)) as resp:
                     return resp.status in (200, 204)
         except Exception as e:
             logger.error(f"Discord error: {e}")
             return False
-    
+
     def format_message(self, alert: TriggeredAlert, detailed: bool = False) -> str:
         return f"**{alert.alert_type.value.upper()}**\n{alert.message}"
 
 class AlertChecker:
-    
+
     @staticmethod
-    def check_price_alert(alert: AlertConfig, current_price: float, 
+    def check_price_alert(alert: AlertConfig, current_price: float,
                           previous_price: Optional[float] = None) -> Optional[TriggeredAlert]:
         if not alert.can_trigger():
             return None
-        
+
         triggered = False
         trigger_value = current_price
         message = ""
-        
+
         if alert.alert_type == AlertType.PRICE_ABOVE:
             if current_price > alert.threshold_value:
                 triggered = True
                 message = f"Price ${current_price:,.6f} is above ${alert.threshold_value:,.6f}"
-        
+
         elif alert.alert_type == AlertType.PRICE_BELOW:
             if current_price < alert.threshold_value:
                 triggered = True
                 message = f"Price ${current_price:,.6f} is below ${alert.threshold_value:,.6f}"
-        
+
         elif alert.alert_type == AlertType.PRICE_CHANGE_PCT and previous_price:
             pct_change = ((current_price - previous_price) / previous_price) * 100
             trigger_value = pct_change
-            
+
             if alert.comparison == Comparison.CHANGE_UP and pct_change >= alert.threshold_value:
                 triggered = True
                 message = f"Price increased {pct_change:+.2f}% (threshold: {alert.threshold_value}%)"
@@ -369,7 +369,7 @@ class AlertChecker:
             elif alert.comparison == Comparison.CHANGE_ANY and abs(pct_change) >= alert.threshold_value:
                 triggered = True
                 message = f"Price changed {pct_change:+.2f}% (threshold: +/-{alert.threshold_value}%)"
-        
+
         if triggered:
             return TriggeredAlert(
                 trigger_id=str(uuid.uuid4()),
@@ -382,29 +382,29 @@ class AlertChecker:
                 threshold_value=alert.threshold_value,
                 message=message
             )
-        
+
         return None
-    
+
     @staticmethod
-    def check_volume_alert(alert: AlertConfig, current_volume: float, 
+    def check_volume_alert(alert: AlertConfig, current_volume: float,
                            avg_volume: float) -> Optional[TriggeredAlert]:
         if not alert.can_trigger():
             return None
-        
+
         triggered = False
         message = ""
-        
+
         if alert.alert_type == AlertType.VOLUME_SPIKE:
             volume_ratio = current_volume / avg_volume if avg_volume > 0 else 0
             if volume_ratio >= alert.threshold_value:
                 triggered = True
                 message = f"Volume spike: {volume_ratio:.1f}x average (threshold: {alert.threshold_value}x)"
-        
+
         elif alert.alert_type == AlertType.VOLUME_ABOVE:
             if current_volume > alert.threshold_value:
                 triggered = True
                 message = f"Volume ${current_volume:,.0f} exceeds ${alert.threshold_value:,.0f}"
-        
+
         if triggered:
             return TriggeredAlert(
                 trigger_id=str(uuid.uuid4()),
@@ -417,15 +417,15 @@ class AlertChecker:
                 threshold_value=alert.threshold_value,
                 message=message
             )
-        
+
         return None
-    
+
     @staticmethod
-    def check_whale_alert(alert: AlertConfig, transfer_amount: float, 
+    def check_whale_alert(alert: AlertConfig, transfer_amount: float,
                           wallet_address: str) -> Optional[TriggeredAlert]:
         if not alert.can_trigger():
             return None
-        
+
         if transfer_amount >= alert.threshold_value:
             return TriggeredAlert(
                 trigger_id=str(uuid.uuid4()),
@@ -439,25 +439,25 @@ class AlertChecker:
                 message=f"Whale movement: {transfer_amount:,.2f} tokens from {wallet_address[:8]}...",
                 extra_data={"wallet": wallet_address}
             )
-        
+
         return None
-    
+
     @staticmethod
     def check_market_cap_alert(alert: AlertConfig, current_mcap: float) -> Optional[TriggeredAlert]:
         if not alert.can_trigger():
             return None
-        
+
         triggered = False
         message = ""
-        
+
         if alert.alert_type == AlertType.MARKET_CAP_ABOVE and current_mcap > alert.threshold_value:
             triggered = True
             message = f"Market cap ${current_mcap:,.0f} exceeds ${alert.threshold_value:,.0f}"
-        
+
         elif alert.alert_type == AlertType.MARKET_CAP_BELOW and current_mcap < alert.threshold_value:
             triggered = True
             message = f"Market cap ${current_mcap:,.0f} below ${alert.threshold_value:,.0f}"
-        
+
         if triggered:
             return TriggeredAlert(
                 trigger_id=str(uuid.uuid4()),
@@ -470,11 +470,11 @@ class AlertChecker:
                 threshold_value=alert.threshold_value,
                 message=message
             )
-        
+
         return None
 
 class AlertManager:
-    
+
     def __init__(
         self,
         storage_path: Optional[Path] = None,
@@ -482,51 +482,51 @@ class AlertManager:
     ):
         self.storage_path = storage_path or Path("./data/alerts")
         self.rate_limit = rate_limit or RateLimitConfig()
-        
+
         self.alerts: Dict[str, AlertConfig] = {}
         self.alerts_by_user: Dict[str, Set[str]] = defaultdict(set)
         self.alerts_by_token: Dict[str, Set[str]] = defaultdict(set)
-        
+
         self.triggered_history: List[TriggeredAlert] = []
         self.max_history = 10000
-        
+
         self.providers: Dict[NotificationChannel, NotificationProvider] = {}
-        
+
         self.user_dnd: Dict[str, DoNotDisturbConfig] = {}
         self.user_channels: Dict[str, Dict[str, str]] = {}
-        
+
         self._notification_counts: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
         self._rate_limit_reset: Dict[str, datetime] = {}
-        
+
         self._monitoring = False
         self._monitor_task: Optional[asyncio.Task] = None
         self._price_cache: Dict[str, float] = {}
         self._previous_prices: Dict[str, float] = {}
-        
+
         self._on_alert_triggered: List[Callable] = []
         self._price_fetcher: Optional[Callable] = None
-    
+
     async def initialize(self):
         self.storage_path.mkdir(parents=True, exist_ok=True)
         await self._load_alerts()
         logger.info(f"AlertManager initialized with {len(self.alerts)} alerts")
-    
+
     def register_provider(self, channel: NotificationChannel, provider: NotificationProvider):
         self.providers[channel] = provider
         logger.info(f"Registered {channel.value} notification provider")
-    
+
     def set_telegram_provider(self, bot_token: str, default_chat_id: Optional[str] = None):
         self.register_provider(
             NotificationChannel.TELEGRAM,
             TelegramNotificationProvider(bot_token, default_chat_id)
         )
-    
+
     def set_webhook_provider(self, default_url: Optional[str] = None):
         self.register_provider(
             NotificationChannel.WEBHOOK,
             WebhookNotificationProvider(default_url)
         )
-    
+
     def set_price_fetcher(self, fetcher: Callable):
         self._price_fetcher = fetcher
 
@@ -546,11 +546,11 @@ class AlertManager:
         **extra_data
     ) -> AlertConfig:
         alert_id = str(uuid.uuid4())
-        
+
         expires_at = None
         if expires_in_hours:
             expires_at = datetime.utcnow() + timedelta(hours=expires_in_hours)
-        
+
         alert = AlertConfig(
             alert_id=alert_id,
             user_id=user_id,
@@ -566,64 +566,64 @@ class AlertManager:
             expires_at=expires_at,
             extra_data=extra_data
         )
-        
+
         self.alerts[alert_id] = alert
         self.alerts_by_user[user_id].add(alert_id)
-        
+
         if token_mint:
             self.alerts_by_token[token_mint].add(alert_id)
-        
+
         await self._save_alerts()
-        
+
         logger.info(f"Created alert {alert_id} for user {user_id}: {alert_type.value}")
         return alert
-    
+
     async def delete_alert(self, alert_id: str) -> bool:
         if alert_id not in self.alerts:
             return False
-        
+
         alert = self.alerts[alert_id]
-        
+
         del self.alerts[alert_id]
         self.alerts_by_user[alert.user_id].discard(alert_id)
-        
+
         if alert.token_mint:
             self.alerts_by_token[alert.token_mint].discard(alert_id)
-        
+
         await self._save_alerts()
-        
+
         logger.info(f"Deleted alert {alert_id}")
         return True
-    
+
     async def toggle_alert(self, alert_id: str) -> Optional[bool]:
         if alert_id not in self.alerts:
             return None
-        
+
         self.alerts[alert_id].active = not self.alerts[alert_id].active
         self.alerts[alert_id].updated_at = datetime.utcnow()
-        
+
         await self._save_alerts()
-        
+
         return self.alerts[alert_id].active
-    
+
     async def update_alert(self, alert_id: str, **updates) -> Optional[AlertConfig]:
         if alert_id not in self.alerts:
             return None
-        
+
         alert = self.alerts[alert_id]
-        
+
         for key, value in updates.items():
             if hasattr(alert, key):
                 setattr(alert, key, value)
-        
+
         alert.updated_at = datetime.utcnow()
         await self._save_alerts()
-        
+
         return alert
-    
+
     def get_alert(self, alert_id: str) -> Optional[AlertConfig]:
         return self.alerts.get(alert_id)
-    
+
     def list_alerts(
         self,
         user_id: Optional[str] = None,
@@ -637,17 +637,17 @@ class AlertManager:
             alert_ids = self.alerts_by_token.get(token_mint, set())
         else:
             alert_ids = set(self.alerts.keys())
-        
+
         alerts = [self.alerts[aid] for aid in alert_ids if aid in self.alerts]
-        
+
         if alert_type:
             alerts = [a for a in alerts if a.alert_type == alert_type]
-        
+
         if active_only:
             alerts = [a for a in alerts if a.active and not a.is_expired()]
-        
+
         return sorted(alerts, key=lambda a: a.created_at, reverse=True)
-    
+
     def get_triggered_alerts(
         self,
         user_id: Optional[str] = None,
@@ -655,13 +655,13 @@ class AlertManager:
         since: Optional[datetime] = None
     ) -> List[TriggeredAlert]:
         history = self.triggered_history
-        
+
         if user_id:
             history = [t for t in history if t.user_id == user_id]
-        
+
         if since:
             history = [t for t in history if t.triggered_at >= since]
-        
+
         return sorted(history, key=lambda t: t.triggered_at, reverse=True)[:limit]
 
     async def create_price_above_alert(
@@ -679,7 +679,7 @@ class AlertManager:
             comparison=Comparison.GREATER_THAN,
             **kwargs
         )
-    
+
     async def create_price_below_alert(
         self,
         user_id: str,
@@ -695,7 +695,7 @@ class AlertManager:
             comparison=Comparison.LESS_THAN,
             **kwargs
         )
-    
+
     async def create_percent_change_alert(
         self,
         user_id: str,
@@ -709,7 +709,7 @@ class AlertManager:
             "down": Comparison.CHANGE_DOWN,
             "any": Comparison.CHANGE_ANY
         }
-        
+
         return await self.create_alert(
             user_id=user_id,
             alert_type=AlertType.PRICE_CHANGE_PCT,
@@ -718,7 +718,7 @@ class AlertManager:
             comparison=comparison_map.get(direction, Comparison.CHANGE_ANY),
             **kwargs
         )
-    
+
     async def create_stop_loss_alert(
         self,
         user_id: str,
@@ -737,7 +737,7 @@ class AlertManager:
             position_id=position_id,
             **kwargs
         )
-    
+
     async def create_take_profit_alert(
         self,
         user_id: str,
@@ -756,7 +756,7 @@ class AlertManager:
             position_id=position_id,
             **kwargs
         )
-    
+
     async def create_whale_alert(
         self,
         user_id: str,
@@ -775,37 +775,37 @@ class AlertManager:
 
     async def check_price_alerts(self, token_mint: str, current_price: float) -> List[TriggeredAlert]:
         triggered = []
-        
+
         previous_price = self._previous_prices.get(token_mint)
         self._previous_prices[token_mint] = self._price_cache.get(token_mint, current_price)
         self._price_cache[token_mint] = current_price
-        
+
         alert_ids = self.alerts_by_token.get(token_mint, set())
-        
+
         for alert_id in list(alert_ids):
             alert = self.alerts.get(alert_id)
             if not alert or not alert.active:
                 continue
-            
+
             if alert.alert_type in (AlertType.PRICE_ABOVE, AlertType.PRICE_BELOW, AlertType.PRICE_CHANGE_PCT):
                 result = AlertChecker.check_price_alert(alert, current_price, previous_price)
-                
+
                 if result:
                     triggered.append(result)
                     await self._handle_triggered_alert(alert, result)
-        
+
         return triggered
-    
+
     async def check_all_alerts(self, market_data: Dict[str, Dict[str, float]]) -> List[TriggeredAlert]:
         all_triggered = []
-        
+
         for token_mint, data in market_data.items():
             if "price" in data:
                 triggered = await self.check_price_alerts(token_mint, data["price"])
                 all_triggered.extend(triggered)
-        
+
         return all_triggered
-    
+
     async def trigger_alert_manually(
         self,
         alert_type: AlertType,
@@ -827,36 +827,36 @@ class AlertManager:
             message=message,
             extra_data=extra_data
         )
-        
+
         channels = [NotificationChannel.TELEGRAM]
-        
+
         await self._send_notifications(user_id, triggered, channels)
         self._add_to_history(triggered)
-        
+
         return triggered
-    
+
     async def _handle_triggered_alert(self, alert: AlertConfig, triggered: TriggeredAlert):
         alert.last_triggered = datetime.utcnow()
         alert.trigger_count += 1
-        
+
         if alert.repeat == AlertRepeat.ONCE:
             alert.active = False
-        
+
         await self._send_notifications(alert.user_id, triggered, alert.notification_channels)
-        
+
         self._add_to_history(triggered)
-        
+
         for callback in self._on_alert_triggered:
             try:
                 await callback(triggered)
             except Exception as e:
                 logger.error(f"Alert callback error: {e}")
-        
+
         await self._save_alerts()
-    
+
     def _add_to_history(self, triggered: TriggeredAlert):
         self.triggered_history.append(triggered)
-        
+
         if len(self.triggered_history) > self.max_history:
             self.triggered_history = self.triggered_history[-self.max_history:]
 
@@ -869,37 +869,37 @@ class AlertManager:
         if not self._can_notify_user(user_id, triggered.alert_type):
             logger.debug(f"User {user_id} is in DND mode")
             return
-        
+
         if not self._check_rate_limit(user_id):
             logger.warning(f"Rate limit exceeded for user {user_id}")
             return
-        
+
         for channel in channels:
             provider = self.providers.get(channel)
             if not provider:
                 logger.warning(f"No provider for channel {channel.value}")
                 continue
-            
+
             try:
                 message = provider.format_message(triggered, detailed=True)
-                
+
                 channel_config = self.user_channels.get(user_id, {}).get(channel.value, {})
-                
+
                 success = await provider.send(user_id, message, **channel_config)
-                
+
                 if success:
                     triggered.notification_sent = True
                     triggered.notification_channels_sent.append(channel)
                     self._increment_notification_count(user_id)
-                    
+
             except Exception as e:
                 logger.error(f"Failed to send {channel.value} notification: {e}")
-    
+
     def _can_notify_user(self, user_id: str, alert_type: AlertType) -> bool:
         dnd = self.user_dnd.get(user_id)
         if not dnd or not dnd.enabled:
             return True
-        
+
         if dnd.allow_critical and alert_type in (
             AlertType.RUG_WARNING,
             AlertType.SAFETY_ALERT,
@@ -907,47 +907,47 @@ class AlertManager:
             AlertType.POSITION_STOP_LOSS
         ):
             return True
-        
+
         now = datetime.utcnow()
         current_hour = now.hour
-        
+
         if dnd.start_hour > dnd.end_hour:
             if current_hour >= dnd.start_hour or current_hour < dnd.end_hour:
                 return False
         else:
             if dnd.start_hour <= current_hour < dnd.end_hour:
                 return False
-        
+
         return True
-    
+
     def _check_rate_limit(self, user_id: str) -> bool:
         now = datetime.utcnow()
         counts = self._notification_counts[user_id]
-        
+
         reset_time = self._rate_limit_reset.get(user_id)
         if not reset_time or now > reset_time:
             counts.clear()
             self._rate_limit_reset[user_id] = now + timedelta(hours=1)
-        
+
         if counts.get('hour', 0) >= self.rate_limit.max_per_hour:
             return False
-        
+
         return True
-    
+
     def _increment_notification_count(self, user_id: str):
         self._notification_counts[user_id]['hour'] += 1
         self._notification_counts[user_id]['day'] += 1
-    
+
     def set_user_dnd(self, user_id: str, config: DoNotDisturbConfig):
         self.user_dnd[user_id] = config
-    
+
     def set_user_channel_config(self, user_id: str, channel: NotificationChannel, config: Dict[str, Any]):
         if user_id not in self.user_channels:
             self.user_channels[user_id] = {}
         self.user_channels[user_id][channel.value] = config
-    
+
     def set_user_telegram_chat(self, user_id: str, chat_id: str):
         self.set_user_channel_config(user_id, NotificationChannel.TELEGRAM, {"chat_id": chat_id})
-    
+
     def set_user_webhook(self, user_id: str, webhook_url: str):
         self.set_user_channel_config(user_id, NotificationChannel.WEBHOOK, {"webhook_url": webhook_url})
