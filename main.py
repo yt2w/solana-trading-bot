@@ -1,6 +1,3 @@
-"""
-Solana Trading Bot - Main Entry Point
-"""
 
 import asyncio
 import signal
@@ -11,12 +8,9 @@ from logging.handlers import RotatingFileHandler
 from config import config
 from bot import get_bot
 
-
 def setup_logging():
-    """Configure logging for the application."""
     config.logging.ensure_directory()
     
-    # Create formatters
     file_formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
@@ -24,11 +18,9 @@ def setup_logging():
         '%(asctime)s - %(levelname)s - %(message)s'
     )
     
-    # Root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(getattr(logging, config.logging.level.upper()))
     
-    # File handler with rotation
     file_handler = RotatingFileHandler(
         config.logging.file_path,
         maxBytes=config.logging.max_size_mb * 1024 * 1024,
@@ -37,27 +29,21 @@ def setup_logging():
     file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
     
-    # Console handler
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
     
-    # Reduce noise from libraries
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("telegram").setLevel(logging.WARNING)
     
     return logging.getLogger(__name__)
 
-
 async def main():
-    """Main async entry point."""
     logger = setup_logging()
     
-    # Initialize configuration
     config.initialize()
     
-    # Validate configuration
     issues = config.validate()
     for issue in issues:
         logger.info(issue)
@@ -69,10 +55,8 @@ async def main():
     logger.info(f"Paper Trading: {config.trading.paper_trading}")
     logger.info(f"Database: {config.database.path}")
     
-    # Get bot instance
     bot = get_bot()
     
-    # Handle shutdown signals
     loop = asyncio.get_event_loop()
     
     def signal_handler():
@@ -83,14 +67,11 @@ async def main():
         try:
             loop.add_signal_handler(sig, signal_handler)
         except NotImplementedError:
-            # Windows doesn't support add_signal_handler
             pass
     
     try:
-        # Start the bot
         await bot.start()
         
-        # Keep running
         while bot.is_running:
             await asyncio.sleep(1)
             
@@ -101,7 +82,6 @@ async def main():
     finally:
         await bot.stop()
         logger.info("Bot shutdown complete")
-
 
 if __name__ == "__main__":
     try:
