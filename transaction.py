@@ -1,9 +1,3 @@
-"""
-Transaction handling module for Solana Trading Bot.
-
-Production-grade transaction building, signing, sending, and confirmation
-with Jito MEV protection support.
-"""
 
 import asyncio
 import time
@@ -32,20 +26,12 @@ from solders.address_lookup_table_account import AddressLookupTableAccount
 
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# Constants & Enums
-# =============================================================================
-
 class CommitmentLevel(str, Enum):
-    """Solana commitment levels."""
     PROCESSED = "processed"
     CONFIRMED = "confirmed"
     FINALIZED = "finalized"
 
-
 class TransactionStatus(str, Enum):
-    """Transaction status states."""
     PENDING = "pending"
     CONFIRMED = "confirmed"
     FINALIZED = "finalized"
@@ -53,15 +39,12 @@ class TransactionStatus(str, Enum):
     EXPIRED = "expired"
     NOT_FOUND = "not_found"
 
-
 class JitoRegion(str, Enum):
-    """Jito block engine regions."""
     MAINNET = "mainnet"
     AMSTERDAM = "amsterdam"
     FRANKFURT = "frankfurt"
     NEW_YORK = "ny"
     TOKYO = "tokyo"
-
 
 JITO_ENDPOINTS = {
     JitoRegion.MAINNET: "https://mainnet.block-engine.jito.wtf",
@@ -90,66 +73,41 @@ DEFAULT_CONFIRMATION_TIMEOUT = 60
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_RETRY_DELAY = 0.5
 
-
-# =============================================================================
-# Exceptions
-# =============================================================================
-
 class TransactionError(Exception):
-    """Base exception for transaction errors."""
     def __init__(self, message: str, logs: Optional[List[str]] = None):
         super().__init__(message)
         self.logs = logs or []
 
-
 class TransactionBuildError(TransactionError):
-    """Error building transaction."""
     pass
-
 
 class TransactionSignError(TransactionError):
-    """Error signing transaction."""
     pass
 
-
 class TransactionSendError(TransactionError):
-    """Error sending transaction."""
     def __init__(self, message: str, error_code: Optional[int] = None, logs: Optional[List[str]] = None):
         super().__init__(message, logs)
         self.error_code = error_code
 
-
 class TransactionConfirmError(TransactionError):
-    """Error confirming transaction."""
     pass
-
 
 class TransactionExpiredError(TransactionError):
-    """Transaction expired before confirmation."""
     pass
 
-
 class TransactionSimulationError(TransactionError):
-    """Transaction simulation failed."""
     def __init__(self, message: str, units_consumed: Optional[int] = None, logs: Optional[List[str]] = None):
         super().__init__(message, logs)
         self.units_consumed = units_consumed
 
-
 class InsufficientFundsError(TransactionError):
-    """Insufficient funds for transaction."""
     pass
-
 
 class JitoError(TransactionError):
-    """Error with Jito bundle operations."""
     pass
-
 
 class BlockhashNotFoundError(TransactionError):
-    """Blockhash not found or expired."""
     pass
-
 
 SOLANA_ERROR_CODES = {
     0: "Generic error",
@@ -163,9 +121,7 @@ SOLANA_ERROR_CODES = {
     8: "Immutable account modified",
 }
 
-
 def parse_solana_error(error_data: Any) -> Tuple[str, Optional[int], List[str]]:
-    """Parse Solana RPC error response."""
     logs = []
     error_code = None
     message = "Unknown error"
@@ -198,13 +154,7 @@ def parse_solana_error(error_data: Any) -> Tuple[str, Optional[int], List[str]]:
     
     return message, error_code, logs
 
-
-# =============================================================================
-# Compute Budget Instructions
-# =============================================================================
-
 def create_set_compute_unit_limit_instruction(units: int) -> Instruction:
-    """Create instruction to set compute unit limit."""
     data = bytes([0x02]) + struct.pack("<I", units)
     return Instruction(
         program_id=COMPUTE_BUDGET_PROGRAM_ID,
@@ -212,9 +162,7 @@ def create_set_compute_unit_limit_instruction(units: int) -> Instruction:
         data=data
     )
 
-
 def create_set_compute_unit_price_instruction(micro_lamports: int) -> Instruction:
-    """Create instruction to set compute unit price (priority fee)."""
     data = bytes([0x03]) + struct.pack("<Q", micro_lamports)
     return Instruction(
         program_id=COMPUTE_BUDGET_PROGRAM_ID,
@@ -222,9 +170,7 @@ def create_set_compute_unit_price_instruction(micro_lamports: int) -> Instructio
         data=data
     )
 
-
 def create_request_heap_frame_instruction(bytes_size: int) -> Instruction:
-    """Create instruction to request additional heap frame."""
     data = bytes([0x01]) + struct.pack("<I", bytes_size)
     return Instruction(
         program_id=COMPUTE_BUDGET_PROGRAM_ID,
@@ -232,25 +178,16 @@ def create_request_heap_frame_instruction(bytes_size: int) -> Instruction:
         data=data
     )
 
-
-# =============================================================================
-# Blockhash Cache
-# =============================================================================
-
 @dataclass
 class CachedBlockhash:
-    """Cached blockhash with expiry."""
     blockhash: Hash
     last_valid_block_height: int
     fetched_at: float
     
     def is_expired(self, max_age_seconds: float = 30) -> bool:
-        """Check if blockhash is too old."""
         return time.time() - self.fetched_at > max_age_seconds
 
-
 class BlockhashCache:
-    """Thread-safe blockhash cache."""
     
     def __init__(self, max_age_seconds: float = 30):
         self.max_age = max_age_seconds
@@ -262,7 +199,6 @@ class BlockhashCache:
         client: AsyncClient,
         force_refresh: bool = False
     ) -> Tuple[Hash, int]:
-        """Get recent blockhash, using cache if valid."""
         async with self._lock:
             if force_refresh or self._cache is None or self._cache.is_expired(self.max_age):
                 response = await client.get_latest_blockhash(commitment=Confirmed)
@@ -280,28 +216,18 @@ class BlockhashCache:
             return self._cache.blockhash, self._cache.last_valid_block_height
     
     def invalidate(self):
-        """Invalidate cached blockhash."""
         self._cache = None
 
-
 _blockhash_cache = BlockhashCache()
-
 
 async def get_recent_blockhash(
     client: AsyncClient,
     force_refresh: bool = False
 ) -> Tuple[Hash, int]:
-    """Get recent blockhash with caching."""
     return await _blockhash_cache.get_blockhash(client, force_refresh)
-
-
-# =============================================================================
-# Transaction Builder
-# =============================================================================
 
 @dataclass
 class TransactionConfig:
-    """Configuration for transaction building."""
     compute_units: Optional[int] = None
     compute_unit_price: Optional[int] = None
     use_versioned: bool = True
@@ -309,9 +235,7 @@ class TransactionConfig:
     preflight_commitment: CommitmentLevel = CommitmentLevel.CONFIRMED
     max_retries: int = DEFAULT_MAX_RETRIES
 
-
 class TransactionBuilder:
-    """Builder for constructing Solana transactions."""
     
     def __init__(
         self,
@@ -327,22 +251,18 @@ class TransactionBuilder:
         self._last_valid_block_height: Optional[int] = None
     
     def add_instruction(self, instruction: Instruction) -> "TransactionBuilder":
-        """Add an instruction to the transaction."""
         self.instructions.append(instruction)
         return self
     
     def add_instructions(self, instructions: List[Instruction]) -> "TransactionBuilder":
-        """Add multiple instructions."""
         self.instructions.extend(instructions)
         return self
     
     def add_signer(self, signer: Keypair) -> "TransactionBuilder":
-        """Add a signer to the transaction."""
         self.signers.append(signer)
         return self
     
     def add_signers(self, signers: List[Keypair]) -> "TransactionBuilder":
-        """Add multiple signers."""
         self.signers.extend(signers)
         return self
     
@@ -350,33 +270,27 @@ class TransactionBuilder:
         self,
         table: AddressLookupTableAccount
     ) -> "TransactionBuilder":
-        """Add address lookup table for versioned transactions."""
         self.address_lookup_tables.append(table)
         return self
     
     def set_compute_units(self, units: int) -> "TransactionBuilder":
-        """Set compute unit limit."""
         self.config.compute_units = units
         return self
     
     def set_priority_fee(self, micro_lamports: int) -> "TransactionBuilder":
-        """Set priority fee (compute unit price)."""
         self.config.compute_unit_price = micro_lamports
         return self
     
     def set_blockhash(self, blockhash: Hash, last_valid_block_height: int) -> "TransactionBuilder":
-        """Set blockhash manually."""
         self._blockhash = blockhash
         self._last_valid_block_height = last_valid_block_height
         return self
     
     async def fetch_blockhash(self, client: AsyncClient) -> "TransactionBuilder":
-        """Fetch and set recent blockhash."""
         self._blockhash, self._last_valid_block_height = await get_recent_blockhash(client)
         return self
     
     def _build_instructions(self) -> List[Instruction]:
-        """Build final instruction list with compute budget."""
         instructions = []
         
         if self.config.compute_units is not None:
@@ -393,7 +307,6 @@ class TransactionBuilder:
         return instructions
     
     def build_legacy(self) -> Transaction:
-        """Build a legacy transaction."""
         if not self._blockhash:
             raise TransactionBuildError("Blockhash not set. Call fetch_blockhash() first.")
         
@@ -411,7 +324,6 @@ class TransactionBuilder:
         return tx
     
     def build_versioned(self) -> VersionedTransaction:
-        """Build a versioned (v0) transaction."""
         if not self._blockhash:
             raise TransactionBuildError("Blockhash not set. Call fetch_blockhash() first.")
         
@@ -439,7 +351,6 @@ class TransactionBuilder:
         return tx
     
     async def build(self, client: Optional[AsyncClient] = None) -> Union[Transaction, VersionedTransaction]:
-        """Build transaction, fetching blockhash if needed."""
         if not self._blockhash and client:
             await self.fetch_blockhash(client)
         
@@ -449,7 +360,6 @@ class TransactionBuilder:
             return self.build_legacy()
     
     def clear(self) -> "TransactionBuilder":
-        """Clear all instructions and signers."""
         self.instructions.clear()
         self.signers.clear()
         self.address_lookup_tables.clear()
@@ -457,54 +367,37 @@ class TransactionBuilder:
         self._last_valid_block_height = None
         return self
 
-
-# =============================================================================
-# Transaction Signing
-# =============================================================================
-
 def sign_transaction(tx: Transaction, keypair: Keypair) -> Transaction:
-    """Sign a legacy transaction with a keypair."""
     try:
         tx.sign(keypair)
         return tx
     except Exception as e:
         raise TransactionSignError(f"Failed to sign transaction: {e}")
 
-
 def sign_transaction_multi(tx: Transaction, keypairs: List[Keypair]) -> Transaction:
-    """Sign a legacy transaction with multiple keypairs."""
     try:
         tx.sign(*keypairs)
         return tx
     except Exception as e:
         raise TransactionSignError(f"Failed to sign transaction: {e}")
 
-
 def sign_versioned_transaction(
     tx: VersionedTransaction,
     keypair: Keypair
 ) -> VersionedTransaction:
-    """Sign a versioned transaction with a keypair."""
     try:
         return VersionedTransaction(tx.message, [keypair])
     except Exception as e:
         raise TransactionSignError(f"Failed to sign versioned transaction: {e}")
 
-
 def sign_versioned_transaction_multi(
     tx: VersionedTransaction,
     keypairs: List[Keypair]
 ) -> VersionedTransaction:
-    """Sign a versioned transaction with multiple keypairs."""
     try:
         return VersionedTransaction(tx.message, keypairs)
     except Exception as e:
         raise TransactionSignError(f"Failed to sign versioned transaction: {e}")
-
-
-# =============================================================================
-# Transaction Sending
-# =============================================================================
 
 async def send_transaction(
     client: AsyncClient,
@@ -514,7 +407,6 @@ async def send_transaction(
     max_retries: int = DEFAULT_MAX_RETRIES,
     retry_delay: float = DEFAULT_RETRY_DELAY
 ) -> Signature:
-    """Send a transaction with retry logic."""
     opts = TxOpts(
         skip_preflight=skip_preflight,
         preflight_commitment=Commitment(preflight_commitment.value),
@@ -561,14 +453,12 @@ async def send_transaction(
     message, error_code, logs = parse_solana_error(str(last_error))
     raise TransactionSendError(message, error_code, logs)
 
-
 async def send_raw_transaction(
     client: AsyncClient,
     raw_tx: bytes,
     skip_preflight: bool = False,
     preflight_commitment: CommitmentLevel = CommitmentLevel.CONFIRMED
 ) -> Signature:
-    """Send a raw serialized transaction."""
     opts = TxOpts(
         skip_preflight=skip_preflight,
         preflight_commitment=Commitment(preflight_commitment.value)
@@ -581,11 +471,6 @@ async def send_raw_transaction(
     
     raise TransactionSendError("Failed to send raw transaction")
 
-
-# =============================================================================
-# Transaction Confirmation
-# =============================================================================
-
 async def confirm_transaction(
     client: AsyncClient,
     signature: Signature,
@@ -593,7 +478,6 @@ async def confirm_transaction(
     timeout: float = DEFAULT_CONFIRMATION_TIMEOUT,
     poll_interval: float = 0.5
 ) -> TransactionStatus:
-    """Wait for transaction confirmation."""
     start_time = time.time()
     
     while time.time() - start_time < timeout:
@@ -623,13 +507,11 @@ async def confirm_transaction(
     
     raise TransactionConfirmError(f"Transaction confirmation timeout after {timeout}s: {signature}")
 
-
 async def get_transaction_status(
     client: AsyncClient,
     signature: Signature,
     commitment: CommitmentLevel = CommitmentLevel.CONFIRMED
 ) -> TransactionStatus:
-    """Get the current status of a transaction."""
     try:
         response = await client.get_signature_statuses([signature])
         
@@ -656,7 +538,6 @@ async def get_transaction_status(
         logger.error(f"Error getting transaction status: {e}")
         return TransactionStatus.NOT_FOUND
 
-
 async def send_and_confirm_transaction(
     client: AsyncClient,
     tx: Union[Transaction, VersionedTransaction],
@@ -664,25 +545,17 @@ async def send_and_confirm_transaction(
     commitment: CommitmentLevel = CommitmentLevel.CONFIRMED,
     timeout: float = DEFAULT_CONFIRMATION_TIMEOUT
 ) -> Tuple[Signature, TransactionStatus]:
-    """Send transaction and wait for confirmation."""
     signature = await send_transaction(client, tx, skip_preflight=skip_preflight)
     status = await confirm_transaction(client, signature, commitment, timeout)
     return signature, status
 
-
-# =============================================================================
-# Transaction Simulation
-# =============================================================================
-
 @dataclass
 class SimulationResult:
-    """Result of transaction simulation."""
     success: bool
     logs: List[str]
     units_consumed: Optional[int]
     error: Optional[str]
     accounts: Optional[List[Any]]
-
 
 async def simulate_transaction(
     client: AsyncClient,
@@ -691,7 +564,6 @@ async def simulate_transaction(
     sig_verify: bool = False,
     replace_recent_blockhash: bool = True
 ) -> SimulationResult:
-    """Simulate a transaction without submitting."""
     try:
         response = await client.simulate_transaction(
             tx,
@@ -728,13 +600,11 @@ async def simulate_transaction(
             accounts=None
         )
 
-
 async def estimate_compute_units(
     client: AsyncClient,
     tx: Union[Transaction, VersionedTransaction],
     buffer_percent: float = 20
 ) -> int:
-    """Estimate compute units needed for transaction."""
     result = await simulate_transaction(client, tx)
     
     if not result.success:
@@ -747,13 +617,11 @@ async def estimate_compute_units(
     
     return DEFAULT_COMPUTE_UNITS
 
-
 async def estimate_priority_fee(
     client: AsyncClient,
     account_keys: Optional[List[Pubkey]] = None,
     percentile: int = 75
 ) -> int:
-    """Estimate priority fee based on recent fees."""
     try:
         if account_keys:
             response = await client.get_recent_prioritization_fees(account_keys)
@@ -777,22 +645,14 @@ async def estimate_priority_fee(
         logger.warning(f"Error estimating priority fee: {e}")
         return DEFAULT_COMPUTE_UNIT_PRICE
 
-
-# =============================================================================
-# Jito Bundle Support
-# =============================================================================
-
 @dataclass
 class JitoBundleResult:
-    """Result of Jito bundle submission."""
     bundle_id: str
     status: str
     landed_slot: Optional[int] = None
     error: Optional[str] = None
 
-
 class JitoClient:
-    """Client for Jito Labs MEV protection."""
     
     def __init__(
         self,
@@ -805,7 +665,6 @@ class JitoClient:
         self._session: Optional[aiohttp.ClientSession] = None
     
     async def _get_session(self) -> aiohttp.ClientSession:
-        """Get or create HTTP session."""
         if self._session is None or self._session.closed:
             headers = {"Content-Type": "application/json"}
             if self.api_key:
@@ -814,7 +673,6 @@ class JitoClient:
         return self._session
     
     async def close(self):
-        """Close HTTP session."""
         if self._session and not self._session.closed:
             await self._session.close()
     
@@ -825,7 +683,6 @@ class JitoClient:
         await self.close()
     
     def get_random_tip_account(self) -> Pubkey:
-        """Get a random Jito tip account."""
         return Pubkey.from_string(random.choice(JITO_TIP_ACCOUNTS))
     
     def create_tip_instruction(
@@ -834,7 +691,6 @@ class JitoClient:
         tip_lamports: int,
         tip_account: Optional[Pubkey] = None
     ) -> Instruction:
-        """Create a tip instruction for Jito."""
         if tip_account is None:
             tip_account = self.get_random_tip_account()
         
@@ -851,7 +707,6 @@ class JitoClient:
         transactions: List[Union[Transaction, VersionedTransaction]],
         timeout: float = 30
     ) -> JitoBundleResult:
-        """Send a bundle of transactions to Jito."""
         session = await self._get_session()
         
         serialized = []
@@ -896,7 +751,6 @@ class JitoClient:
         bundle_id: str,
         timeout: float = 10
     ) -> JitoBundleResult:
-        """Get the status of a submitted bundle."""
         session = await self._get_session()
         
         payload = {
@@ -950,7 +804,6 @@ class JitoClient:
         timeout: float = 60,
         poll_interval: float = 1.0
     ) -> JitoBundleResult:
-        """Send bundle and wait for confirmation."""
         result = await self.send_bundle(transactions)
         
         if result.error:
@@ -974,7 +827,6 @@ class JitoClient:
             error=f"Bundle confirmation timeout after {timeout}s"
         )
 
-
 async def send_with_jito(
     tx: Union[Transaction, VersionedTransaction],
     tip_lamports: int,
@@ -982,17 +834,11 @@ async def send_with_jito(
     region: JitoRegion = JitoRegion.MAINNET,
     confirm: bool = True
 ) -> Union[JitoBundleResult, Signature]:
-    """Convenience function to send transaction via Jito."""
     async with JitoClient(region=region) as jito:
         if confirm:
             return await jito.send_and_confirm_bundle([tx])
         else:
             return await jito.send_bundle([tx])
-
-
-# =============================================================================
-# High-Level Transaction Functions
-# =============================================================================
 
 async def build_and_send_transaction(
     client: AsyncClient,
@@ -1006,7 +852,6 @@ async def build_and_send_transaction(
     confirm: bool = True,
     commitment: CommitmentLevel = CommitmentLevel.CONFIRMED
 ) -> Tuple[Signature, Optional[TransactionStatus]]:
-    """High-level function to build, sign, send, and optionally confirm a transaction."""
     config = TransactionConfig(
         compute_units=compute_units,
         compute_unit_price=priority_fee,
@@ -1039,9 +884,7 @@ async def build_and_send_transaction(
         signature = await send_transaction(client, tx, skip_preflight)
         return signature, None
 
-
 class TransactionManager:
-    """Manager for handling multiple transactions with shared state."""
     
     def __init__(
         self,
@@ -1055,11 +898,9 @@ class TransactionManager:
         self.blockhash_cache = BlockhashCache()
     
     async def get_blockhash(self, force_refresh: bool = False) -> Tuple[Hash, int]:
-        """Get cached or fresh blockhash."""
         return await self.blockhash_cache.get_blockhash(self.client, force_refresh)
     
     def create_builder(self, config: Optional[TransactionConfig] = None) -> TransactionBuilder:
-        """Create a new transaction builder."""
         return TransactionBuilder(
             self.payer.pubkey(),
             config or self.default_config
@@ -1070,7 +911,6 @@ class TransactionManager:
         tx: Union[Transaction, VersionedTransaction],
         skip_preflight: bool = False
     ) -> Signature:
-        """Send a signed transaction."""
         return await send_transaction(
             self.client,
             tx,
@@ -1083,7 +923,6 @@ class TransactionManager:
         commitment: CommitmentLevel = CommitmentLevel.CONFIRMED,
         timeout: float = DEFAULT_CONFIRMATION_TIMEOUT
     ) -> TransactionStatus:
-        """Confirm a transaction."""
         return await confirm_transaction(
             self.client,
             signature,
@@ -1098,7 +937,6 @@ class TransactionManager:
         commitment: CommitmentLevel = CommitmentLevel.CONFIRMED,
         timeout: float = DEFAULT_CONFIRMATION_TIMEOUT
     ) -> Tuple[Signature, TransactionStatus]:
-        """Send and confirm a transaction."""
         return await send_and_confirm_transaction(
             self.client,
             tx,
@@ -1111,7 +949,6 @@ class TransactionManager:
         self,
         tx: Union[Transaction, VersionedTransaction]
     ) -> SimulationResult:
-        """Simulate a transaction."""
         return await simulate_transaction(self.client, tx)
     
     async def estimate_fees(
@@ -1119,7 +956,6 @@ class TransactionManager:
         instructions: List[Instruction],
         account_keys: Optional[List[Pubkey]] = None
     ) -> Tuple[int, int]:
-        """Estimate compute units and priority fee for instructions."""
         builder = self.create_builder()
         builder.add_instructions(instructions)
         await builder.fetch_blockhash(self.client)
@@ -1135,18 +971,11 @@ class TransactionManager:
         
         return compute_units, priority_fee
 
-
-# =============================================================================
-# Exports
-# =============================================================================
-
 __all__ = [
-    # Enums
     "CommitmentLevel",
     "TransactionStatus",
     "JitoRegion",
     
-    # Exceptions
     "TransactionError",
     "TransactionBuildError",
     "TransactionSignError",
@@ -1158,55 +987,44 @@ __all__ = [
     "JitoError",
     "BlockhashNotFoundError",
     
-    # Data classes
     "TransactionConfig",
     "SimulationResult",
     "JitoBundleResult",
     "CachedBlockhash",
     
-    # Builder
     "TransactionBuilder",
     
-    # Signing
     "sign_transaction",
     "sign_transaction_multi",
     "sign_versioned_transaction",
     "sign_versioned_transaction_multi",
     
-    # Sending
     "send_transaction",
     "send_raw_transaction",
     "send_with_jito",
     
-    # Confirmation
     "confirm_transaction",
     "get_transaction_status",
     "send_and_confirm_transaction",
     
-    # Simulation
     "simulate_transaction",
     "estimate_compute_units",
     "estimate_priority_fee",
     
-    # Helpers
     "get_recent_blockhash",
     "BlockhashCache",
     
-    # Compute budget
     "create_set_compute_unit_limit_instruction",
     "create_set_compute_unit_price_instruction",
     "create_request_heap_frame_instruction",
     
-    # Jito
     "JitoClient",
     "JITO_ENDPOINTS",
     "JITO_TIP_ACCOUNTS",
     
-    # High-level
     "build_and_send_transaction",
     "TransactionManager",
     
-    # Error handling
     "parse_solana_error",
     "SOLANA_ERROR_CODES",
 ]
