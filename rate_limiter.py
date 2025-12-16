@@ -1,17 +1,3 @@
-"""
-Production-Grade Rate Limiting System for Solana Trading Bot.
-
-This module provides comprehensive rate limiting capabilities including:
-- Multiple rate limiting algorithms (sliding window, leaky bucket, adaptive)
-- Per-user, per-operation, and global rate limiting
-- Tiered rate limits (free, basic, premium)
-- Persistent state for restart survival
-- Abuse detection and automatic cooldowns
-- Async-safe implementation with proper locking
-
-Author: Trading Bot System
-Version: 1.0.0
-"""
 
 import asyncio
 import json
@@ -37,104 +23,73 @@ from typing import (
     Union,
 )
 
-# Configure logging
 logger = logging.getLogger(__name__)
 
-# Type variables for generic decorators
 F = TypeVar('F', bound=Callable[..., Any])
 
-
-# =============================================================================
-# ENUMS AND CONSTANTS
-# =============================================================================
-
 class RateLimitTier(Enum):
-    """User tier levels with different rate limits."""
     FREE = "free"
     BASIC = "basic"
     PREMIUM = "premium"
     ENTERPRISE = "enterprise"
-    UNLIMITED = "unlimited"  # For internal/admin use
-
+    UNLIMITED = "unlimited"
 
 class OperationType(Enum):
-    """Types of operations that can be rate limited."""
-    # Wallet operations
     WALLET_CREATE = "wallet_create"
     WALLET_EXPORT = "wallet_export"
     WALLET_IMPORT = "wallet_import"
     WALLET_BALANCE = "wallet_balance"
     
-    # Trading operations
     TRADE_BUY = "trade_buy"
     TRADE_SELL = "trade_sell"
     TRADE_SWAP = "trade_swap"
     
-    # Query operations
     QUERY_PRICE = "query_price"
     QUERY_PORTFOLIO = "query_portfolio"
     QUERY_HISTORY = "query_history"
     
-    # API operations
     API_CALL = "api_call"
     API_BATCH = "api_batch"
     
-    # Admin operations
     ADMIN_ACTION = "admin_action"
     
-    # Generic
     GENERIC = "generic"
 
-
 class ViolationType(Enum):
-    """Types of rate limit violations."""
-    SOFT = "soft"      # Warning, request still processed
-    HARD = "hard"      # Request rejected
-    ABUSE = "abuse"    # Repeated violations, extended cooldown
-
-
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
+    SOFT = "soft"
+    HARD = "hard"
+    ABUSE = "abuse"
 
 @dataclass
 class RateLimitConfig:
-    """Configuration for rate limiting behavior."""
     
-    # Window settings
     window_size_seconds: int = 60
-    sliding_window_precision: int = 10  # Sub-windows for sliding window
+    sliding_window_precision: int = 10
     
-    # Default limits (requests per window)
     default_limit: int = 60
-    burst_limit: int = 10  # Max burst in short period
+    burst_limit: int = 10
     burst_window_seconds: int = 5
     
-    # Abuse detection
-    violation_threshold: int = 5  # Violations before abuse flag
-    violation_window_seconds: int = 300  # Window for counting violations
-    abuse_cooldown_seconds: int = 600  # Cooldown after abuse detection
-    abuse_multiplier: float = 2.0  # Each abuse increases cooldown
-    max_abuse_cooldown_seconds: int = 3600  # Max 1 hour cooldown
+    violation_threshold: int = 5
+    violation_window_seconds: int = 300
+    abuse_cooldown_seconds: int = 600
+    abuse_multiplier: float = 2.0
+    max_abuse_cooldown_seconds: int = 3600
     
-    # Persistence
     persistence_enabled: bool = True
     persistence_path: str = "data/rate_limits"
     persistence_interval_seconds: int = 60
     
-    # Cleanup
     cleanup_interval_seconds: int = 300
-    entry_ttl_seconds: int = 3600  # Remove entries older than 1 hour
+    entry_ttl_seconds: int = 3600
     
-    # Adaptive settings
     adaptive_enabled: bool = True
-    adaptive_increase_threshold: float = 0.9  # Utilization to trigger reduction
-    adaptive_decrease_threshold: float = 0.5  # Utilization to trigger increase
-    adaptive_adjustment_factor: float = 0.1  # 10% adjustment
+    adaptive_increase_threshold: float = 0.9
+    adaptive_decrease_threshold: float = 0.5
+    adaptive_adjustment_factor: float = 0.1
     
     @classmethod
     def from_env(cls) -> 'RateLimitConfig':
-        """Load configuration from environment variables."""
         return cls(
             window_size_seconds=int(os.getenv('RATE_LIMIT_WINDOW', '60')),
             default_limit=int(os.getenv('RATE_LIMIT_DEFAULT', '60')),
@@ -147,24 +102,18 @@ class RateLimitConfig:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'RateLimitConfig':
-        """Create config from dictionary."""
         return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
-
 
 @dataclass
 class TierLimits:
-    """Rate limits for a specific tier."""
     requests_per_minute: int
     requests_per_hour: int
     requests_per_day: int
     burst_limit: int
     concurrent_limit: int
     
-    # Operation-specific overrides
     operation_limits: Dict[str, int] = field(default_factory=dict)
 
-
-# Default tier configurations
 DEFAULT_TIER_LIMITS: Dict[RateLimitTier, TierLimits] = {
     RateLimitTier.FREE: TierLimits(
         requests_per_minute=10,
@@ -223,30 +172,22 @@ DEFAULT_TIER_LIMITS: Dict[RateLimitTier, TierLimits] = {
     ),
 }
 
-
-# =============================================================================
-# RESULT CLASSES
-# =============================================================================
-
 @dataclass
 class RateLimitResult:
-    """Result of a rate limit check."""
     allowed: bool
     remaining: int
     limit: int
-    reset_at: float  # Unix timestamp
-    retry_after: Optional[float] = None  # Seconds until retry allowed
+    reset_at: float
+    retry_after: Optional[float] = None
     violation_type: Optional[ViolationType] = None
     message: str = ""
     
     @property
     def reset_datetime(self) -> datetime:
-        """Get reset time as datetime."""
         return datetime.fromtimestamp(self.reset_at)
     
     @property
     def headers(self) -> Dict[str, str]:
-        """Generate HTTP headers for rate limit response."""
         headers = {
             'X-RateLimit-Limit': str(self.limit),
             'X-RateLimit-Remaining': str(max(0, self.remaining)),
@@ -257,7 +198,6 @@ class RateLimitResult:
         return headers
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for JSON serialization."""
         return {
             'allowed': self.allowed,
             'remaining': self.remaining,
@@ -268,10 +208,8 @@ class RateLimitResult:
             'message': self.message,
         }
 
-
 @dataclass
 class UsageStats:
-    """Statistics for rate limit usage."""
     total_requests: int = 0
     allowed_requests: int = 0
     rejected_requests: int = 0
@@ -282,7 +220,6 @@ class UsageStats:
     last_request_at: Optional[float] = None
     
     def record_request(self, allowed: bool, utilization: float) -> None:
-        """Record a request in statistics."""
         self.total_requests += 1
         if allowed:
             self.allowed_requests += 1
@@ -290,20 +227,13 @@ class UsageStats:
             self.rejected_requests += 1
             self.violations += 1
         self.peak_usage = max(self.peak_usage, utilization)
-        # Rolling average
         if self.total_requests > 1:
             self.avg_usage = (self.avg_usage * (self.total_requests - 1) + utilization) / self.total_requests
         else:
             self.avg_usage = utilization
         self.last_request_at = time.time()
 
-
-# =============================================================================
-# ABSTRACT BASE LIMITER
-# =============================================================================
-
 class BaseRateLimiter(ABC):
-    """Abstract base class for rate limiters."""
     
     def __init__(self, config: Optional[RateLimitConfig] = None):
         self.config = config or RateLimitConfig()
@@ -312,55 +242,29 @@ class BaseRateLimiter(ABC):
         
     @abstractmethod
     async def acquire(self, key: str, cost: int = 1) -> RateLimitResult:
-        """
-        Attempt to acquire rate limit tokens.
-        
-        Args:
-            key: Identifier for the rate limit bucket
-            cost: Number of tokens to consume
-            
-        Returns:
-            RateLimitResult indicating if request is allowed
-        """
         pass
     
     @abstractmethod
     async def get_remaining(self, key: str) -> int:
-        """Get remaining tokens for a key."""
         pass
     
     @abstractmethod
     async def reset(self, key: str) -> None:
-        """Reset rate limit for a key."""
         pass
     
     @abstractmethod
     async def get_state(self) -> Dict[str, Any]:
-        """Get current state for persistence."""
         pass
     
     @abstractmethod
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         pass
     
     @property
     def stats(self) -> UsageStats:
-        """Get usage statistics."""
         return self._stats
 
-
-# =============================================================================
-# SLIDING WINDOW RATE LIMITER
-# =============================================================================
-
 class SlidingWindowRateLimiter(BaseRateLimiter):
-    """
-    Sliding window rate limiter using token bucket algorithm.
-    
-    Provides smooth rate limiting by dividing the window into sub-windows
-    and calculating a weighted sum based on the current position in the window.
-    """
     
     def __init__(
         self,
@@ -375,16 +279,13 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
         self.precision = precision
         self.sub_window_seconds = window_seconds / precision
         
-        # Storage: key -> list of (timestamp, count) tuples
         self._buckets: Dict[str, List[Tuple[float, int]]] = defaultdict(list)
         
     def _get_current_window(self) -> float:
-        """Get the current sub-window timestamp."""
         now = time.time()
         return now - (now % self.sub_window_seconds)
     
     def _cleanup_old_entries(self, key: str, now: float) -> None:
-        """Remove entries older than the window."""
         cutoff = now - self.window_seconds
         self._buckets[key] = [
             (ts, count) for ts, count in self._buckets[key]
@@ -392,7 +293,6 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
         ]
     
     def _calculate_count(self, key: str, now: float) -> float:
-        """Calculate the weighted count for sliding window."""
         self._cleanup_old_entries(key, now)
         
         if not self._buckets[key]:
@@ -402,11 +302,9 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
         total = 0.0
         
         for ts, count in self._buckets[key]:
-            # Weight based on how much of this sub-window is in our window
             if ts >= window_start:
                 weight = 1.0
             else:
-                # Partial weight for the oldest sub-window
                 overlap = (ts + self.sub_window_seconds) - window_start
                 weight = max(0, overlap / self.sub_window_seconds)
             total += count * weight
@@ -414,25 +312,20 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
         return total
     
     async def acquire(self, key: str, cost: int = 1) -> RateLimitResult:
-        """Attempt to acquire tokens from the rate limiter."""
         async with self._lock:
             now = time.time()
             current_window = self._get_current_window()
             
-            # Calculate current usage
             current_count = self._calculate_count(key, now)
             remaining = max(0, self.limit - int(current_count))
             
-            # Calculate reset time
             if self._buckets[key]:
                 oldest_ts = min(ts for ts, _ in self._buckets[key])
                 reset_at = oldest_ts + self.window_seconds
             else:
                 reset_at = now + self.window_seconds
             
-            # Check if allowed
             if current_count + cost <= self.limit:
-                # Add to current sub-window
                 found = False
                 for i, (ts, count) in enumerate(self._buckets[key]):
                     if ts == current_window:
@@ -453,7 +346,6 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
                     message="Request allowed"
                 )
             else:
-                # Calculate retry after
                 retry_after = reset_at - now
                 utilization = current_count / self.limit
                 self._stats.record_request(False, utilization)
@@ -469,19 +361,16 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
                 )
     
     async def get_remaining(self, key: str) -> int:
-        """Get remaining tokens for a key."""
         async with self._lock:
             now = time.time()
             current_count = self._calculate_count(key, now)
             return max(0, self.limit - int(current_count))
     
     async def reset(self, key: str) -> None:
-        """Reset rate limit for a key."""
         async with self._lock:
             self._buckets.pop(key, None)
     
     async def get_state(self) -> Dict[str, Any]:
-        """Get current state for persistence."""
         async with self._lock:
             return {
                 'type': 'sliding_window',
@@ -492,7 +381,6 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
             }
     
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         async with self._lock:
             if state.get('type') != 'sliding_window':
                 logger.warning("State type mismatch, skipping load")
@@ -501,46 +389,31 @@ class SlidingWindowRateLimiter(BaseRateLimiter):
             now = time.time()
             cutoff = now - self.window_seconds
             
-            # Load buckets, filtering out expired entries
             for key, entries in state.get('buckets', {}).items():
                 valid_entries = [(ts, count) for ts, count in entries if ts > cutoff]
                 if valid_entries:
                     self._buckets[key] = valid_entries
             
-            # Load stats
             if 'stats' in state:
                 for k, v in state['stats'].items():
                     if hasattr(self._stats, k):
                         setattr(self._stats, k, v)
 
-
-# =============================================================================
-# LEAKY BUCKET RATE LIMITER
-# =============================================================================
-
 class LeakyBucketRateLimiter(BaseRateLimiter):
-    """
-    Leaky bucket rate limiter.
-    
-    Requests fill a bucket that leaks at a constant rate.
-    When the bucket is full, requests are rejected.
-    """
     
     def __init__(
         self,
         capacity: int,
-        leak_rate: float,  # tokens per second
+        leak_rate: float,
         config: Optional[RateLimitConfig] = None
     ):
         super().__init__(config)
         self.capacity = capacity
         self.leak_rate = leak_rate
         
-        # Storage: key -> (level, last_update_time)
         self._buckets: Dict[str, Tuple[float, float]] = {}
     
     def _get_current_level(self, key: str, now: float) -> float:
-        """Get the current bucket level after leaking."""
         if key not in self._buckets:
             return 0.0
         
@@ -550,14 +423,11 @@ class LeakyBucketRateLimiter(BaseRateLimiter):
         return max(0, level - leaked)
     
     async def acquire(self, key: str, cost: int = 1) -> RateLimitResult:
-        """Attempt to add to the bucket."""
         async with self._lock:
             now = time.time()
             current_level = self._get_current_level(key, now)
             
-            # Calculate time until bucket empties enough
             if current_level + cost <= self.capacity:
-                # Add to bucket
                 new_level = current_level + cost
                 self._buckets[key] = (new_level, now)
                 
@@ -574,7 +444,6 @@ class LeakyBucketRateLimiter(BaseRateLimiter):
                     message="Request allowed"
                 )
             else:
-                # Calculate when there will be room
                 excess = (current_level + cost) - self.capacity
                 retry_after = excess / self.leak_rate
                 reset_at = now + (current_level / self.leak_rate)
@@ -592,19 +461,16 @@ class LeakyBucketRateLimiter(BaseRateLimiter):
                 )
     
     async def get_remaining(self, key: str) -> int:
-        """Get remaining capacity in bucket."""
         async with self._lock:
             now = time.time()
             current_level = self._get_current_level(key, now)
             return int(self.capacity - current_level)
     
     async def reset(self, key: str) -> None:
-        """Reset bucket for a key."""
         async with self._lock:
             self._buckets.pop(key, None)
     
     async def get_state(self) -> Dict[str, Any]:
-        """Get current state for persistence."""
         async with self._lock:
             return {
                 'type': 'leaky_bucket',
@@ -615,7 +481,6 @@ class LeakyBucketRateLimiter(BaseRateLimiter):
             }
     
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         async with self._lock:
             if state.get('type') != 'leaky_bucket':
                 logger.warning("State type mismatch, skipping load")
@@ -625,7 +490,6 @@ class LeakyBucketRateLimiter(BaseRateLimiter):
             for key, bucket_data in state.get('buckets', {}).items():
                 if isinstance(bucket_data, (list, tuple)) and len(bucket_data) == 2:
                     level, last_update = bucket_data
-                    # Recalculate level based on time elapsed
                     elapsed = now - last_update
                     current_level = max(0, level - (elapsed * self.leak_rate))
                     if current_level > 0:
@@ -636,18 +500,7 @@ class LeakyBucketRateLimiter(BaseRateLimiter):
                     if hasattr(self._stats, k):
                         setattr(self._stats, k, v)
 
-
-# =============================================================================
-# ADAPTIVE RATE LIMITER
-# =============================================================================
-
 class AdaptiveRateLimiter(BaseRateLimiter):
-    """
-    Adaptive rate limiter that adjusts limits based on response patterns.
-    
-    Monitors success/failure rates and adjusts limits dynamically to
-    optimize throughput while preventing overload.
-    """
     
     def __init__(
         self,
@@ -663,13 +516,10 @@ class AdaptiveRateLimiter(BaseRateLimiter):
         self.max_limit = max_limit
         self.window_seconds = window_seconds
         
-        # Current effective limits per key
         self._effective_limits: Dict[str, int] = defaultdict(lambda: base_limit)
         
-        # Track response patterns: key -> list of (timestamp, success)
         self._response_history: Dict[str, List[Tuple[float, bool]]] = defaultdict(list)
         
-        # Underlying sliding window limiter
         self._limiter = SlidingWindowRateLimiter(
             limit=base_limit,
             window_seconds=window_seconds,
@@ -677,41 +527,33 @@ class AdaptiveRateLimiter(BaseRateLimiter):
         )
     
     def _calculate_success_rate(self, key: str, now: float) -> float:
-        """Calculate recent success rate."""
         cutoff = now - self.window_seconds
         history = self._response_history[key]
         
-        # Filter to recent history
         recent = [(ts, success) for ts, success in history if ts > cutoff]
         self._response_history[key] = recent
         
         if not recent:
-            return 1.0  # Assume success if no history
+            return 1.0
         
         successes = sum(1 for _, success in recent if success)
         return successes / len(recent)
     
     async def adjust_limit(self, key: str, success: bool) -> None:
-        """Adjust limit based on response outcome."""
         async with self._lock:
             now = time.time()
             
-            # Record outcome
             self._response_history[key].append((now, success))
             
-            # Calculate success rate
             success_rate = self._calculate_success_rate(key, now)
             current_limit = self._effective_limits[key]
             
-            # Adjust based on success rate
             if success_rate < self.config.adaptive_decrease_threshold:
-                # Too many failures, reduce limit
                 new_limit = int(current_limit * (1 - self.config.adaptive_adjustment_factor))
                 new_limit = max(self.min_limit, new_limit)
                 if new_limit != current_limit:
                     logger.info(f"Reducing limit for {key}: {current_limit} -> {new_limit}")
             elif success_rate > self.config.adaptive_increase_threshold:
-                # Good success rate, try increasing
                 new_limit = int(current_limit * (1 + self.config.adaptive_adjustment_factor))
                 new_limit = min(self.max_limit, new_limit)
                 if new_limit != current_limit:
@@ -722,27 +564,22 @@ class AdaptiveRateLimiter(BaseRateLimiter):
             self._effective_limits[key] = new_limit
     
     async def acquire(self, key: str, cost: int = 1) -> RateLimitResult:
-        """Acquire with adaptive limiting."""
         async with self._lock:
-            # Update limiter with current effective limit
             effective_limit = self._effective_limits[key]
             self._limiter.limit = effective_limit
         
         return await self._limiter.acquire(key, cost)
     
     async def get_remaining(self, key: str) -> int:
-        """Get remaining tokens."""
         return await self._limiter.get_remaining(key)
     
     async def reset(self, key: str) -> None:
-        """Reset limits and history for a key."""
         async with self._lock:
             self._effective_limits.pop(key, None)
             self._response_history.pop(key, None)
         await self._limiter.reset(key)
     
     async def get_state(self) -> Dict[str, Any]:
-        """Get current state for persistence."""
         limiter_state = await self._limiter.get_state()
         async with self._lock:
             return {
@@ -756,7 +593,6 @@ class AdaptiveRateLimiter(BaseRateLimiter):
             }
     
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         if state.get('type') != 'adaptive':
             logger.warning("State type mismatch, skipping load")
             return
@@ -773,18 +609,7 @@ class AdaptiveRateLimiter(BaseRateLimiter):
                 if hasattr(self._stats, k):
                     setattr(self._stats, k, v)
 
-
-# =============================================================================
-# USER RATE LIMITER
-# =============================================================================
-
 class UserRateLimiter:
-    """
-    Per-user rate limiting with tier support.
-    
-    Manages rate limits for individual users based on their tier level,
-    with support for abuse detection and automatic cooldowns.
-    """
     
     def __init__(
         self,
@@ -796,35 +621,28 @@ class UserRateLimiter:
         
         self._lock = asyncio.Lock()
         
-        # Per-user limiters
         self._minute_limiters: Dict[str, SlidingWindowRateLimiter] = {}
         self._hour_limiters: Dict[str, SlidingWindowRateLimiter] = {}
         self._day_limiters: Dict[str, SlidingWindowRateLimiter] = {}
         
-        # User tiers
         self._user_tiers: Dict[str, RateLimitTier] = {}
         
-        # Abuse tracking: user_id -> list of violation timestamps
         self._violations: Dict[str, List[float]] = defaultdict(list)
-        self._abuse_cooldowns: Dict[str, float] = {}  # user_id -> cooldown_until
-        self._abuse_counts: Dict[str, int] = defaultdict(int)  # For escalating cooldowns
+        self._abuse_cooldowns: Dict[str, float] = {}
+        self._abuse_counts: Dict[str, int] = defaultdict(int)
     
     def _get_user_tier(self, user_id: str) -> RateLimitTier:
-        """Get tier for a user."""
         return self._user_tiers.get(user_id, RateLimitTier.FREE)
     
     def _get_tier_limits(self, tier: RateLimitTier) -> TierLimits:
-        """Get limits for a tier."""
         return self.tier_limits.get(tier, self.tier_limits[RateLimitTier.FREE])
     
     async def set_user_tier(self, user_id: str, tier: RateLimitTier) -> None:
-        """Set the tier for a user."""
         async with self._lock:
             old_tier = self._user_tiers.get(user_id)
             self._user_tiers[user_id] = tier
             
             if old_tier != tier:
-                # Reset limiters to apply new tier limits
                 self._minute_limiters.pop(user_id, None)
                 self._hour_limiters.pop(user_id, None)
                 self._day_limiters.pop(user_id, None)
@@ -835,7 +653,6 @@ class UserRateLimiter:
         user_id: str, 
         limits: TierLimits
     ) -> Tuple[SlidingWindowRateLimiter, SlidingWindowRateLimiter, SlidingWindowRateLimiter]:
-        """Get or create limiters for a user."""
         if user_id not in self._minute_limiters:
             self._minute_limiters[user_id] = SlidingWindowRateLimiter(
                 limit=limits.requests_per_minute,
@@ -862,7 +679,6 @@ class UserRateLimiter:
         )
     
     def _check_abuse_cooldown(self, user_id: str, now: float) -> Optional[RateLimitResult]:
-        """Check if user is in abuse cooldown."""
         if user_id in self._abuse_cooldowns:
             cooldown_until = self._abuse_cooldowns[user_id]
             if now < cooldown_until:
@@ -876,24 +692,18 @@ class UserRateLimiter:
                     message=f"Account in cooldown due to abuse. Retry after {cooldown_until - now:.0f}s"
                 )
             else:
-                # Cooldown expired
                 del self._abuse_cooldowns[user_id]
         return None
     
     def _record_violation(self, user_id: str, now: float) -> bool:
-        """Record a violation and check for abuse. Returns True if abuse detected."""
-        # Clean old violations
         cutoff = now - self.config.violation_window_seconds
         self._violations[user_id] = [
             ts for ts in self._violations[user_id] if ts > cutoff
         ]
         
-        # Add new violation
         self._violations[user_id].append(now)
         
-        # Check for abuse
         if len(self._violations[user_id]) >= self.config.violation_threshold:
-            # Abuse detected - apply cooldown
             self._abuse_counts[user_id] += 1
             multiplier = self.config.abuse_multiplier ** (self._abuse_counts[user_id] - 1)
             cooldown = min(
@@ -901,7 +711,7 @@ class UserRateLimiter:
                 self.config.max_abuse_cooldown_seconds
             )
             self._abuse_cooldowns[user_id] = now + cooldown
-            self._violations[user_id] = []  # Reset violations
+            self._violations[user_id] = []
             logger.warning(
                 f"Abuse detected for user {user_id}. "
                 f"Cooldown: {cooldown}s (count: {self._abuse_counts[user_id]})"
@@ -915,43 +725,35 @@ class UserRateLimiter:
         user_id: str, 
         cost: int = 1
     ) -> RateLimitResult:
-        """Acquire rate limit for a user."""
         async with self._lock:
             now = time.time()
             
-            # Check abuse cooldown
             abuse_result = self._check_abuse_cooldown(user_id, now)
             if abuse_result:
                 return abuse_result
             
-            # Get user's tier and limits
             tier = self._get_user_tier(user_id)
             limits = self._get_tier_limits(tier)
             
-            # Get limiters
             minute_limiter, hour_limiter, day_limiter = self._get_or_create_limiters(
                 user_id, limits
             )
         
-        # Check all limiters (most restrictive wins)
         results = await asyncio.gather(
             minute_limiter.acquire(user_id, cost),
             hour_limiter.acquire(user_id, cost),
             day_limiter.acquire(user_id, cost)
         )
         
-        # Find the most restrictive result
         for result in results:
             if not result.allowed:
                 async with self._lock:
                     self._record_violation(user_id, time.time())
                 return result
         
-        # All passed - return the one with least remaining (most restrictive)
         return min(results, key=lambda r: r.remaining)
     
     async def get_user_status(self, user_id: str) -> Dict[str, Any]:
-        """Get detailed status for a user."""
         async with self._lock:
             now = time.time()
             tier = self._get_user_tier(user_id)
@@ -987,7 +789,6 @@ class UserRateLimiter:
             }
     
     async def reset_user(self, user_id: str) -> None:
-        """Reset all limits for a user."""
         async with self._lock:
             self._minute_limiters.pop(user_id, None)
             self._hour_limiters.pop(user_id, None)
@@ -998,7 +799,6 @@ class UserRateLimiter:
             logger.info(f"Reset all limits for user {user_id}")
     
     async def get_state(self) -> Dict[str, Any]:
-        """Get state for persistence."""
         async with self._lock:
             return {
                 'type': 'user_rate_limiter',
@@ -1009,7 +809,6 @@ class UserRateLimiter:
             }
     
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         if state.get('type') != 'user_rate_limiter':
             logger.warning("State type mismatch, skipping load")
             return
@@ -1017,40 +816,25 @@ class UserRateLimiter:
         async with self._lock:
             now = time.time()
             
-            # Load user tiers
             for user_id, tier_value in state.get('user_tiers', {}).items():
                 try:
                     self._user_tiers[user_id] = RateLimitTier(tier_value)
                 except ValueError:
                     logger.warning(f"Unknown tier {tier_value} for user {user_id}")
             
-            # Load violations (filter expired)
             cutoff = now - self.config.violation_window_seconds
             for user_id, timestamps in state.get('violations', {}).items():
                 valid = [ts for ts in timestamps if ts > cutoff]
                 if valid:
                     self._violations[user_id] = valid
             
-            # Load abuse cooldowns (filter expired)
             for user_id, until in state.get('abuse_cooldowns', {}).items():
                 if until > now:
                     self._abuse_cooldowns[user_id] = until
             
-            # Load abuse counts
             self._abuse_counts.update(state.get('abuse_counts', {}))
 
-
-# =============================================================================
-# OPERATION RATE LIMITER
-# =============================================================================
-
 class OperationRateLimiter:
-    """
-    Per-operation type rate limiting.
-    
-    Different operations can have different rate limits,
-    useful for protecting expensive or sensitive operations.
-    """
     
     def __init__(
         self,
@@ -1063,7 +847,6 @@ class OperationRateLimiter:
         self.default_limit = default_limit
         self.window_seconds = window_seconds
         
-        # Default operation limits
         self.operation_limits = operation_limits or {
             OperationType.WALLET_CREATE: 5,
             OperationType.WALLET_EXPORT: 10,
@@ -1085,7 +868,6 @@ class OperationRateLimiter:
         self._limiters: Dict[str, SlidingWindowRateLimiter] = {}
     
     def _get_limiter(self, operation: OperationType) -> SlidingWindowRateLimiter:
-        """Get or create limiter for an operation type."""
         key = operation.value
         if key not in self._limiters:
             limit = self.operation_limits.get(operation, self.default_limit)
@@ -1102,11 +884,9 @@ class OperationRateLimiter:
         operation: OperationType,
         cost: int = 1
     ) -> RateLimitResult:
-        """Acquire rate limit for a specific operation."""
         async with self._lock:
             limiter = self._get_limiter(operation)
         
-        # Key combines user and operation
         key = f"{user_id}:{operation.value}"
         result = await limiter.acquire(key, cost)
         
@@ -1120,7 +900,6 @@ class OperationRateLimiter:
         user_id: str, 
         operation: OperationType
     ) -> int:
-        """Get remaining requests for an operation."""
         async with self._lock:
             limiter = self._get_limiter(operation)
         key = f"{user_id}:{operation.value}"
@@ -1130,7 +909,6 @@ class OperationRateLimiter:
         self, 
         user_id: str
     ) -> Dict[str, Dict[str, Any]]:
-        """Get status for all operations for a user."""
         status = {}
         for op in OperationType:
             remaining = await self.get_remaining(user_id, op)
@@ -1143,7 +921,6 @@ class OperationRateLimiter:
         return status
     
     async def get_state(self) -> Dict[str, Any]:
-        """Get state for persistence."""
         states = {}
         for key, limiter in self._limiters.items():
             states[key] = await limiter.get_state()
@@ -1153,7 +930,6 @@ class OperationRateLimiter:
         }
     
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         if state.get('type') != 'operation_rate_limiter':
             return
         
@@ -1165,22 +941,11 @@ class OperationRateLimiter:
             except ValueError:
                 logger.warning(f"Unknown operation type: {key}")
 
-
-# =============================================================================
-# GLOBAL RATE LIMITER
-# =============================================================================
-
 class GlobalRateLimiter:
-    """
-    System-wide rate limiting.
-    
-    Protects the entire system from overload by limiting
-    total requests across all users.
-    """
     
     def __init__(
         self,
-        total_limit: int = 10000,  # Total requests per minute
+        total_limit: int = 10000,
         window_seconds: int = 60,
         config: Optional[RateLimitConfig] = None
     ):
@@ -1193,12 +958,10 @@ class GlobalRateLimiter:
             config=config
         )
         
-        # Track per-endpoint limits
         self._endpoint_limiters: Dict[str, SlidingWindowRateLimiter] = {}
         self._endpoint_limits: Dict[str, int] = {}
     
     def set_endpoint_limit(self, endpoint: str, limit: int) -> None:
-        """Set a specific limit for an endpoint."""
         self._endpoint_limits[endpoint] = limit
         self._endpoint_limiters[endpoint] = SlidingWindowRateLimiter(
             limit=limit,
@@ -1211,14 +974,11 @@ class GlobalRateLimiter:
         cost: int = 1, 
         endpoint: Optional[str] = None
     ) -> RateLimitResult:
-        """Acquire global rate limit."""
-        # Check global limit
         global_result = await self._limiter.acquire("global", cost)
         if not global_result.allowed:
             global_result.message = f"System rate limit exceeded. {global_result.message}"
             return global_result
         
-        # Check endpoint-specific limit if applicable
         if endpoint and endpoint in self._endpoint_limiters:
             endpoint_result = await self._endpoint_limiters[endpoint].acquire(endpoint, cost)
             if not endpoint_result.allowed:
@@ -1228,7 +988,6 @@ class GlobalRateLimiter:
         return global_result
     
     async def get_system_status(self) -> Dict[str, Any]:
-        """Get system-wide rate limit status."""
         remaining = await self._limiter.get_remaining("global")
         
         endpoint_status = {}
@@ -1249,7 +1008,6 @@ class GlobalRateLimiter:
         }
     
     async def get_state(self) -> Dict[str, Any]:
-        """Get state for persistence."""
         limiter_state = await self._limiter.get_state()
         endpoint_states = {}
         for endpoint, limiter in self._endpoint_limiters.items():
@@ -1263,33 +1021,20 @@ class GlobalRateLimiter:
         }
     
     async def load_state(self, state: Dict[str, Any]) -> None:
-        """Load state from persistence."""
         if state.get('type') != 'global_rate_limiter':
             return
         
         if 'limiter_state' in state:
             await self._limiter.load_state(state['limiter_state'])
         
-        # Restore endpoint limits
         for endpoint, limit in state.get('endpoint_limits', {}).items():
             self.set_endpoint_limit(endpoint, limit)
         
-        # Load endpoint states
         for endpoint, ep_state in state.get('endpoint_states', {}).items():
             if endpoint in self._endpoint_limiters:
                 await self._endpoint_limiters[endpoint].load_state(ep_state)
 
-
-# =============================================================================
-# COMPOSITE RATE LIMITER
-# =============================================================================
-
 class CompositeRateLimiter:
-    """
-    Combines multiple rate limiters for comprehensive protection.
-    
-    Checks user limits, operation limits, and global limits together.
-    """
     
     def __init__(
         self,
@@ -1314,25 +1059,18 @@ class CompositeRateLimiter:
         cost: int = 1,
         endpoint: Optional[str] = None
     ) -> RateLimitResult:
-        """
-        Check all rate limiters and return the most restrictive result.
-        """
-        # Check global first (fail fast for system overload)
         global_result = await self.global_limiter.acquire(cost, endpoint)
         if not global_result.allowed:
             return global_result
         
-        # Check user limits
         user_result = await self.user_limiter.acquire(user_id, cost)
         if not user_result.allowed:
             return user_result
         
-        # Check operation limits
         op_result = await self.operation_limiter.acquire(user_id, operation, cost)
         if not op_result.allowed:
             return op_result
         
-        # All passed - return the most restrictive
         results = [global_result, user_result, op_result]
         return min(results, key=lambda r: r.remaining)
     
@@ -1340,7 +1078,6 @@ class CompositeRateLimiter:
         self, 
         user_id: str
     ) -> Dict[str, Any]:
-        """Get comprehensive status for a user."""
         return {
             'user': await self.user_limiter.get_user_status(user_id),
             'operations': await self.operation_limiter.get_operation_status(user_id),
@@ -1348,7 +1085,6 @@ class CompositeRateLimiter:
         }
     
     async def start(self) -> None:
-        """Start background tasks for persistence and cleanup."""
         if self._running:
             return
         
@@ -1362,7 +1098,6 @@ class CompositeRateLimiter:
         logger.info("CompositeRateLimiter started")
     
     async def stop(self) -> None:
-        """Stop background tasks and save state."""
         self._running = False
         
         if self._persistence_task:
@@ -1379,14 +1114,12 @@ class CompositeRateLimiter:
             except asyncio.CancelledError:
                 pass
         
-        # Final save
         if self.config.persistence_enabled:
             await self.save_state()
         
         logger.info("CompositeRateLimiter stopped")
     
     async def _persistence_loop(self) -> None:
-        """Periodically save state."""
         while self._running:
             try:
                 await asyncio.sleep(self.config.persistence_interval_seconds)
@@ -1397,11 +1130,9 @@ class CompositeRateLimiter:
                 logger.error(f"Error in persistence loop: {e}")
     
     async def _cleanup_loop(self) -> None:
-        """Periodically clean up expired entries."""
         while self._running:
             try:
                 await asyncio.sleep(self.config.cleanup_interval_seconds)
-                # Cleanup is handled internally by each limiter
                 logger.debug("Cleanup cycle completed")
             except asyncio.CancelledError:
                 break
@@ -1409,7 +1140,6 @@ class CompositeRateLimiter:
                 logger.error(f"Error in cleanup loop: {e}")
     
     async def save_state(self) -> None:
-        """Save state to persistence."""
         try:
             path = Path(self.config.persistence_path)
             path.mkdir(parents=True, exist_ok=True)
@@ -1427,7 +1157,6 @@ class CompositeRateLimiter:
             with open(temp_file, 'w') as f:
                 json.dump(state, f, indent=2)
             
-            # Atomic rename
             temp_file.replace(state_file)
             
             logger.debug(f"State saved to {state_file}")
@@ -1436,7 +1165,6 @@ class CompositeRateLimiter:
             logger.error(f"Error saving state: {e}")
     
     async def load_state(self) -> bool:
-        """Load state from persistence."""
         try:
             state_file = Path(self.config.persistence_path) / 'rate_limiter_state.json'
             
@@ -1447,7 +1175,6 @@ class CompositeRateLimiter:
             with open(state_file, 'r') as f:
                 state = json.load(f)
             
-            # Check if state is too old
             age = time.time() - state.get('timestamp', 0)
             if age > self.config.entry_ttl_seconds:
                 logger.info(f"Persisted state too old ({age:.0f}s), ignoring")
@@ -1464,11 +1191,6 @@ class CompositeRateLimiter:
             logger.error(f"Error loading state: {e}")
             return False
 
-
-# =============================================================================
-# DECORATORS
-# =============================================================================
-
 def rate_limit(
     limiter: Union[BaseRateLimiter, CompositeRateLimiter],
     user_id_param: str = 'user_id',
@@ -1476,28 +1198,11 @@ def rate_limit(
     cost: int = 1,
     on_limited: Optional[Callable[[RateLimitResult], Any]] = None
 ):
-    """
-    Decorator for rate limiting async functions.
-    
-    Args:
-        limiter: The rate limiter to use
-        user_id_param: Name of the parameter containing user ID
-        operation: Type of operation for operation-based limiting
-        cost: Cost of this operation
-        on_limited: Callback when rate limited (default: raise exception)
-    
-    Example:
-        @rate_limit(my_limiter, user_id_param='uid', operation=OperationType.TRADE_BUY)
-        async def buy_token(uid: str, token: str, amount: float):
-            ...
-    """
     def decorator(func: F) -> F:
         @wraps(func)
         async def wrapper(*args, **kwargs):
-            # Extract user_id from kwargs or args
             user_id = kwargs.get(user_id_param)
             if user_id is None:
-                # Try to find in args using function signature
                 import inspect
                 sig = inspect.signature(func)
                 params = list(sig.parameters.keys())
@@ -1509,7 +1214,6 @@ def rate_limit(
             if user_id is None:
                 raise ValueError(f"Could not find {user_id_param} in function arguments")
             
-            # Check rate limit
             if isinstance(limiter, CompositeRateLimiter):
                 result = await limiter.acquire(user_id, operation, cost)
             else:
@@ -1522,20 +1226,14 @@ def rate_limit(
             
             return await func(*args, **kwargs)
         
-        return wrapper  # type: ignore
+        return wrapper
     return decorator
-
 
 def rate_limit_sync(
     limiter: BaseRateLimiter,
     key_param: str = 'key',
     cost: int = 1
 ):
-    """
-    Decorator for rate limiting sync functions (uses asyncio.run internally).
-    
-    Warning: This creates a new event loop for each call. Use async version when possible.
-    """
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -1551,16 +1249,10 @@ def rate_limit_sync(
             
             return func(*args, **kwargs)
         
-        return wrapper  # type: ignore
+        return wrapper
     return decorator
 
-
-# =============================================================================
-# EXCEPTIONS
-# =============================================================================
-
 class RateLimitExceeded(Exception):
-    """Exception raised when rate limit is exceeded."""
     
     def __init__(self, result: RateLimitResult):
         self.result = result
@@ -1568,23 +1260,13 @@ class RateLimitExceeded(Exception):
     
     @property
     def retry_after(self) -> Optional[float]:
-        """Seconds until retry is allowed."""
         return self.result.retry_after
     
     @property
     def headers(self) -> Dict[str, str]:
-        """HTTP headers for the response."""
         return self.result.headers
 
-
-# =============================================================================
-# MONITORING & ALERTS
-# =============================================================================
-
 class RateLimitMonitor:
-    """
-    Monitors rate limit usage and generates alerts.
-    """
     
     def __init__(
         self,
@@ -1601,14 +1283,12 @@ class RateLimitMonitor:
         }
         
         self._alert_cooldowns: Dict[str, float] = {}
-        self._alert_cooldown_seconds = 300  # Don't repeat alerts for 5 minutes
+        self._alert_cooldown_seconds = 300
     
     def _default_alert(self, alert_type: str, data: Dict[str, Any]) -> None:
-        """Default alert handler - logs the alert."""
         logger.warning(f"RATE LIMIT ALERT [{alert_type}]: {json.dumps(data)}")
     
     def _can_alert(self, alert_key: str) -> bool:
-        """Check if we can send an alert (respecting cooldown)."""
         now = time.time()
         if alert_key in self._alert_cooldowns:
             if now < self._alert_cooldowns[alert_key]:
@@ -1617,10 +1297,8 @@ class RateLimitMonitor:
         return True
     
     async def check_and_alert(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Check rate limit status and generate alerts if needed."""
         alerts = []
         
-        # Check global status
         global_status = await self.limiter.global_limiter.get_system_status()
         global_utilization = 1 - (global_status['global']['remaining'] / global_status['global']['limit'])
         
@@ -1636,7 +1314,6 @@ class RateLimitMonitor:
                 alerts.append(alert)
                 self.alert_callback('global_high_utilization', alert)
         
-        # Check user status if provided
         if user_id:
             user_status = await self.limiter.user_limiter.get_user_status(user_id)
             
@@ -1655,7 +1332,6 @@ class RateLimitMonitor:
         return alerts
     
     async def get_metrics(self) -> Dict[str, Any]:
-        """Get current metrics for monitoring dashboards."""
         global_status = await self.limiter.global_limiter.get_system_status()
         
         return {
@@ -1668,15 +1344,7 @@ class RateLimitMonitor:
             'stats': global_status.get('stats', {}),
         }
 
-
-# =============================================================================
-# FACTORY FUNCTIONS
-# =============================================================================
-
 def create_default_limiter(config: Optional[RateLimitConfig] = None) -> CompositeRateLimiter:
-    """
-    Create a default composite rate limiter with sensible defaults.
-    """
     config = config or RateLimitConfig.from_env()
     
     return CompositeRateLimiter(
@@ -1686,14 +1354,10 @@ def create_default_limiter(config: Optional[RateLimitConfig] = None) -> Composit
         config=config
     )
 
-
 async def create_and_start_limiter(
     config: Optional[RateLimitConfig] = None,
     load_persisted: bool = True
 ) -> CompositeRateLimiter:
-    """
-    Create, optionally load persisted state, and start a rate limiter.
-    """
     limiter = create_default_limiter(config)
     
     if load_persisted:
@@ -1703,18 +1367,11 @@ async def create_and_start_limiter(
     
     return limiter
 
-
-# =============================================================================
-# MAIN (for testing)
-# =============================================================================
-
 if __name__ == "__main__":
     async def test():
-        """Test the rate limiter."""
         print("Creating rate limiter...")
         limiter = await create_and_start_limiter()
         
-        # Test basic rate limiting
         print("\nTesting basic rate limiting:")
         for i in range(5):
             result = await limiter.acquire(
@@ -1723,20 +1380,17 @@ if __name__ == "__main__":
             )
             print(f"  Request {i+1}: allowed={result.allowed}, remaining={result.remaining}")
         
-        # Test user status
         print("\nUser status:")
         status = await limiter.get_comprehensive_status("test_user")
         print(f"  Tier: {status['user']['tier']}")
         print(f"  Remaining (minute): {status['user']['remaining']['per_minute']}")
         
-        # Test different tiers
         print("\nSetting user to premium tier:")
         await limiter.user_limiter.set_user_tier("test_user", RateLimitTier.PREMIUM)
         status = await limiter.get_comprehensive_status("test_user")
         print(f"  New tier: {status['user']['tier']}")
         print(f"  New limit (minute): {status['user']['limits']['per_minute']}")
         
-        # Cleanup
         await limiter.stop()
         print("\nTest completed!")
     
