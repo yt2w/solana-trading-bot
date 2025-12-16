@@ -33,14 +33,14 @@ PRICE_CACHE_TTL = 30
 QUOTE_CACHE_TTL = 5
 
 class JupiterError(Exception):
-    
+
     def __init__(self, message: str, code: Optional[str] = None, details: Optional[Dict] = None):
         super().__init__(message)
         self.code = code
         self.details = details or {}
 
 class JupiterAPIError(JupiterError):
-    
+
     def __init__(self, message: str, status_code: int, response_body: Optional[str] = None):
         super().__init__(message, code=f"HTTP_{status_code}")
         self.status_code = status_code
@@ -53,7 +53,7 @@ class JupiterSwapError(JupiterError):
     pass
 
 class JupiterRateLimitError(JupiterError):
-    
+
     def __init__(self, retry_after: Optional[float] = None):
         super().__init__("Rate limit exceeded", code="RATE_LIMITED")
         self.retry_after = retry_after
@@ -91,7 +91,7 @@ class TokenInfo:
     logo_uri: Optional[str] = None
     tags: List[str] = field(default_factory=list)
     extensions: Dict[str, Any] = field(default_factory=dict)
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "TokenInfo":
         return cls(
@@ -111,7 +111,7 @@ class TokenPrice:
     price_sol: Optional[float] = None
     timestamp: float = field(default_factory=time.time)
     confidence: Optional[str] = None
-    
+
     @classmethod
     def from_dict(cls, mint: str, data: Dict[str, Any]) -> "TokenPrice":
         return cls(
@@ -124,35 +124,35 @@ class TokenPrice:
 class RoutePlan:
     swap_info: Dict[str, Any]
     percent: int
-    
+
     @property
     def amm_key(self) -> str:
         return self.swap_info.get("ammKey", "")
-    
+
     @property
     def label(self) -> str:
         return self.swap_info.get("label", "")
-    
+
     @property
     def input_mint(self) -> str:
         return self.swap_info.get("inputMint", "")
-    
+
     @property
     def output_mint(self) -> str:
         return self.swap_info.get("outputMint", "")
-    
+
     @property
     def in_amount(self) -> int:
         return int(self.swap_info.get("inAmount", 0))
-    
+
     @property
     def out_amount(self) -> int:
         return int(self.swap_info.get("outAmount", 0))
-    
+
     @property
     def fee_amount(self) -> int:
         return int(self.swap_info.get("feeAmount", 0))
-    
+
     @property
     def fee_mint(self) -> str:
         return self.swap_info.get("feeMint", "")
@@ -171,25 +171,25 @@ class SwapQuote:
     context_slot: Optional[int] = None
     time_taken: Optional[float] = None
     raw_response: Dict[str, Any] = field(default_factory=dict)
-    
+
     @property
     def price(self) -> float:
         if self.in_amount == 0:
             return 0.0
         return self.out_amount / self.in_amount
-    
+
     @property
     def minimum_received(self) -> int:
         return self.other_amount_threshold
-    
+
     @property
     def num_hops(self) -> int:
         return len(self.route_plan)
-    
+
     @property
     def dexes_used(self) -> List[str]:
         return list(set(r.label for r in self.route_plan))
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SwapQuote":
         route_plan = [
@@ -199,7 +199,7 @@ class SwapQuote:
             )
             for r in data.get("routePlan", [])
         ]
-        
+
         return cls(
             input_mint=data.get("inputMint", ""),
             output_mint=data.get("outputMint", ""),
@@ -221,7 +221,7 @@ class SwapTransaction:
     last_valid_block_height: int
     priority_fee_lamports: int = 0
     compute_unit_limit: Optional[int] = None
-    
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "SwapTransaction":
         return cls(
@@ -254,24 +254,24 @@ class RouteAnalysis:
     num_hops: int = 0
     dexes: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
-    
+
     @classmethod
     def from_quote(cls, quote: SwapQuote, input_price_usd: float = 0, output_price_usd: float = 0) -> "RouteAnalysis":
         warnings = []
-        
+
         if quote.price_impact_pct > 1.0:
             warnings.append(f"High price impact: {quote.price_impact_pct:.2f}%")
         if quote.price_impact_pct > 5.0:
             warnings.append("CRITICAL: Very high price impact!")
-        
+
         if quote.num_hops > 3:
             warnings.append(f"Complex route with {quote.num_hops} hops")
-        
+
         total_fees_usd = None
         if input_price_usd > 0:
             total_fees = sum(r.fee_amount for r in quote.route_plan)
             total_fees_usd = (total_fees / 1e9) * input_price_usd
-        
+
         return cls(
             quote=quote,
             effective_price=quote.price,
@@ -296,25 +296,25 @@ class JupiterMetrics:
     cache_hits: int = 0
     cache_misses: int = 0
     circuit_breaker_trips: int = 0
-    
+
     @property
     def avg_latency_ms(self) -> float:
         if self.total_requests == 0:
             return 0.0
         return self.total_latency_ms / self.total_requests
-    
+
     @property
     def success_rate(self) -> float:
         if self.total_requests == 0:
             return 0.0
         return self.successful_requests / self.total_requests
-    
+
     @property
     def error_rate(self) -> float:
         if self.total_requests == 0:
             return 0.0
         return self.failed_requests / self.total_requests
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_requests": self.total_requests,
@@ -339,54 +339,54 @@ T = TypeVar('T')
 class CacheEntry(Generic[T]):
     value: T
     expires_at: float
-    
+
     @property
     def is_expired(self) -> bool:
         return time.time() > self.expires_at
 
 class LRUCache(Generic[T]):
-    
+
     def __init__(self, max_size: int = 1000, default_ttl: float = 60.0):
         self.max_size = max_size
         self.default_ttl = default_ttl
         self._cache: OrderedDict[str, CacheEntry[T]] = OrderedDict()
         self._lock = asyncio.Lock()
-    
+
     async def get(self, key: str) -> Optional[T]:
         async with self._lock:
             if key not in self._cache:
                 return None
-            
+
             entry = self._cache[key]
             if entry.is_expired:
                 del self._cache[key]
                 return None
-            
+
             self._cache.move_to_end(key)
             return entry.value
-    
+
     async def set(self, key: str, value: T, ttl: Optional[float] = None) -> None:
         ttl = ttl if ttl is not None else self.default_ttl
         async with self._lock:
             while len(self._cache) >= self.max_size:
                 self._cache.popitem(last=False)
-            
+
             self._cache[key] = CacheEntry(
                 value=value,
                 expires_at=time.time() + ttl
             )
-    
+
     async def delete(self, key: str) -> bool:
         async with self._lock:
             if key in self._cache:
                 del self._cache[key]
                 return True
             return False
-    
+
     async def clear(self) -> None:
         async with self._lock:
             self._cache.clear()
-    
+
     async def cleanup_expired(self) -> int:
         async with self._lock:
             expired_keys = [
@@ -395,13 +395,13 @@ class LRUCache(Generic[T]):
             for key in expired_keys:
                 del self._cache[key]
             return len(expired_keys)
-    
+
     @property
     def size(self) -> int:
         return len(self._cache)
 
 class JupiterCache:
-    
+
     def __init__(
         self,
         token_list_ttl: float = TOKEN_LIST_CACHE_TTL,
@@ -421,22 +421,22 @@ class JupiterCache:
         self.quote_cache: LRUCache[SwapQuote] = LRUCache(
             max_size=1000, default_ttl=quote_ttl
         )
-        
+
         self._cleanup_task: Optional[asyncio.Task] = None
-    
+
     def start_cleanup_task(self, interval: float = 60.0) -> None:
         async def cleanup_loop():
             while True:
                 await asyncio.sleep(interval)
                 await self.cleanup_all()
-        
+
         self._cleanup_task = asyncio.create_task(cleanup_loop())
-    
+
     def stop_cleanup_task(self) -> None:
         if self._cleanup_task:
             self._cleanup_task.cancel()
             self._cleanup_task = None
-    
+
     async def cleanup_all(self) -> Dict[str, int]:
         return {
             "token_list": await self.token_list_cache.cleanup_expired(),
@@ -444,13 +444,13 @@ class JupiterCache:
             "price": await self.price_cache.cleanup_expired(),
             "quote": await self.quote_cache.cleanup_expired()
         }
-    
+
     async def clear_all(self) -> None:
         await self.token_list_cache.clear()
         await self.token_info_cache.clear()
         await self.price_cache.clear()
         await self.quote_cache.clear()
-    
+
     @staticmethod
     def make_quote_key(
         input_mint: str,
@@ -462,7 +462,7 @@ class JupiterCache:
         return hashlib.md5(data.encode()).hexdigest()
 
 class RateLimiter:
-    
+
     def __init__(
         self,
         requests_per_second: float = 10.0,
@@ -473,10 +473,10 @@ class RateLimiter:
         self.tokens = float(burst_size)
         self.last_update = time.time()
         self._lock = asyncio.Lock()
-    
+
     async def acquire(self, timeout: Optional[float] = None) -> bool:
         start_time = time.time()
-        
+
         while True:
             async with self._lock:
                 now = time.time()
@@ -486,24 +486,24 @@ class RateLimiter:
                     self.tokens + time_passed * self.requests_per_second
                 )
                 self.last_update = now
-                
+
                 if self.tokens >= 1.0:
                     self.tokens -= 1.0
                     return True
-            
+
             if timeout is not None:
                 elapsed = time.time() - start_time
                 if elapsed >= timeout:
                     return False
-            
+
             wait_time = (1.0 - self.tokens) / self.requests_per_second
             await asyncio.sleep(min(wait_time, 0.1))
-    
+
     async def wait(self) -> None:
         await self.acquire(timeout=None)
 
 class AdaptiveRateLimiter:
-    
+
     def __init__(
         self,
         initial_rps: float = 10.0,
@@ -515,44 +515,44 @@ class AdaptiveRateLimiter:
         self.max_rps = max_rps
         self._limiter = RateLimiter(initial_rps, int(initial_rps * 2))
         self._lock = asyncio.Lock()
-        
+
         self._rate_limit_hits = 0
         self._successful_requests = 0
         self._last_adjustment = time.time()
-    
+
     async def acquire(self, timeout: Optional[float] = None) -> bool:
         return await self._limiter.acquire(timeout)
-    
+
     async def wait(self) -> None:
         await self._limiter.wait()
-    
+
     async def on_success(self) -> None:
         async with self._lock:
             self._successful_requests += 1
             await self._maybe_increase_rate()
-    
+
     async def on_rate_limit(self, retry_after: Optional[float] = None) -> None:
         async with self._lock:
             self._rate_limit_hits += 1
             new_rps = max(self.min_rps, self.current_rps * 0.5)
             await self._set_rate(new_rps)
-            
+
             if retry_after:
                 await asyncio.sleep(retry_after)
-    
+
     async def _maybe_increase_rate(self) -> None:
         now = time.time()
         if now - self._last_adjustment < 10.0:
             return
-        
+
         if self._rate_limit_hits == 0 and self._successful_requests > 10:
             new_rps = min(self.max_rps, self.current_rps * 1.1)
             await self._set_rate(new_rps)
-        
+
         self._rate_limit_hits = 0
         self._successful_requests = 0
         self._last_adjustment = now
-    
+
     async def _set_rate(self, rps: float) -> None:
         self.current_rps = rps
         self._limiter = RateLimiter(rps, int(rps * 2))
@@ -563,7 +563,7 @@ class CircuitState(Enum):
     HALF_OPEN = "half_open"
 
 class CircuitBreaker:
-    
+
     def __init__(
         self,
         failure_threshold: int = 5,
@@ -573,42 +573,42 @@ class CircuitBreaker:
         self.failure_threshold = failure_threshold
         self.recovery_timeout = recovery_timeout
         self.half_open_max_calls = half_open_max_calls
-        
+
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._last_failure_time: Optional[float] = None
         self._half_open_calls = 0
         self._lock = asyncio.Lock()
-    
+
     @property
     def state(self) -> CircuitState:
         return self._state
-    
+
     @property
     def is_closed(self) -> bool:
         return self._state == CircuitState.CLOSED
-    
+
     async def can_execute(self) -> bool:
         async with self._lock:
             if self._state == CircuitState.CLOSED:
                 return True
-            
+
             if self._state == CircuitState.OPEN:
                 if self._last_failure_time is None:
                     return False
-                
+
                 if time.time() - self._last_failure_time >= self.recovery_timeout:
                     self._state = CircuitState.HALF_OPEN
                     self._half_open_calls = 0
                     logger.info("Circuit breaker: OPEN -> HALF_OPEN")
                     return True
                 return False
-            
+
             if self._half_open_calls < self.half_open_max_calls:
                 self._half_open_calls += 1
                 return True
             return False
-    
+
     async def record_success(self) -> None:
         async with self._lock:
             if self._state == CircuitState.HALF_OPEN:
@@ -619,19 +619,19 @@ class CircuitBreaker:
                     logger.info("Circuit breaker: HALF_OPEN -> CLOSED")
             else:
                 self._failure_count = 0
-    
+
     async def record_failure(self) -> None:
         async with self._lock:
             self._failure_count += 1
             self._last_failure_time = time.time()
-            
+
             if self._state == CircuitState.HALF_OPEN:
                 self._state = CircuitState.OPEN
                 logger.warning("Circuit breaker: HALF_OPEN -> OPEN (failure during recovery)")
             elif self._failure_count >= self.failure_threshold:
                 self._state = CircuitState.OPEN
                 logger.warning(f"Circuit breaker: CLOSED -> OPEN (threshold reached: {self._failure_count})")
-    
+
     async def reset(self) -> None:
         async with self._lock:
             self._state = CircuitState.CLOSED
@@ -640,7 +640,7 @@ class CircuitBreaker:
             self._half_open_calls = 0
 
 class JupiterClient:
-    
+
     def __init__(
         self,
         api_base: str = JUPITER_API_BASE,
@@ -663,27 +663,27 @@ class JupiterClient:
         self.retry_delay = retry_delay
         self.referral_account = referral_account
         self.referral_fee_bps = referral_fee_bps
-        
+
         self._session: Optional[aiohttp.ClientSession] = None
         self._session_lock = asyncio.Lock()
-        
+
         self._rate_limiter = AdaptiveRateLimiter(rate_limit_rps)
         self._circuit_breaker = CircuitBreaker() if enable_circuit_breaker else None
         self._cache = JupiterCache() if enable_cache else None
-        
+
         self.metrics = JupiterMetrics()
-        
+
         self._closed = False
-    
+
     async def __aenter__(self) -> "JupiterClient":
         await self._ensure_session()
         if self._cache:
             self._cache.start_cleanup_task()
         return self
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
         await self.close()
-    
+
     async def _ensure_session(self) -> aiohttp.ClientSession:
         async with self._session_lock:
             if self._session is None or self._session.closed:
@@ -704,22 +704,22 @@ class JupiterClient:
                     }
                 )
             return self._session
-    
+
     async def close(self) -> None:
         if self._closed:
             return
-        
+
         self._closed = True
-        
+
         if self._cache:
             self._cache.stop_cleanup_task()
-        
+
         if self._session and not self._session.closed:
             await self._session.close()
             await asyncio.sleep(0.25)
-        
+
         logger.info("JupiterClient closed")
-    
+
     async def _request(
         self,
         method: str,
@@ -729,23 +729,23 @@ class JupiterClient:
         retry_on_rate_limit: bool = True
     ) -> Dict[str, Any]:
         session = await self._ensure_session()
-        
+
         if self._circuit_breaker and not await self._circuit_breaker.can_execute():
             self.metrics.circuit_breaker_trips += 1
             raise CircuitBreakerOpenError("Circuit breaker is open")
-        
+
         last_error: Optional[Exception] = None
-        
+
         for attempt in range(self.max_retries):
             await self._rate_limiter.wait()
-            
+
             start_time = time.time()
             self.metrics.total_requests += 1
-            
+
             try:
                 log_params = {k: v for k, v in (params or {}).items() if k not in ["private_key"]}
                 logger.debug(f"Request {method} {url} params={log_params} attempt={attempt + 1}")
-                
+
                 async with session.request(
                     method,
                     url,
@@ -754,70 +754,70 @@ class JupiterClient:
                 ) as response:
                     latency = (time.time() - start_time) * 1000
                     self.metrics.total_latency_ms += latency
-                    
+
                     if response.status == 429:
                         self.metrics.rate_limited_requests += 1
                         retry_after = float(response.headers.get("Retry-After", self.retry_delay * (2 ** attempt)))
-                        
+
                         await self._rate_limiter.on_rate_limit(retry_after)
-                        
+
                         if retry_on_rate_limit and attempt < self.max_retries - 1:
                             logger.warning(f"Rate limited, retrying after {retry_after}s")
                             continue
                         raise JupiterRateLimitError(retry_after)
-                    
+
                     try:
                         data = await response.json()
                     except Exception:
                         data = {"raw": await response.text()}
-                    
+
                     if response.status >= 400:
                         self.metrics.failed_requests += 1
                         if self._circuit_breaker:
                             await self._circuit_breaker.record_failure()
-                        
+
                         error_msg = data.get("error", data.get("message", str(data)))
                         raise JupiterAPIError(
                             error_msg,
                             response.status,
                             await response.text() if isinstance(data, dict) and "raw" in data else None
                         )
-                    
+
                     self.metrics.successful_requests += 1
                     await self._rate_limiter.on_success()
                     if self._circuit_breaker:
                         await self._circuit_breaker.record_success()
-                    
+
                     logger.debug(f"Request completed in {latency:.1f}ms")
                     return data
-            
+
             except aiohttp.ClientError as e:
                 self.metrics.failed_requests += 1
                 last_error = JupiterConnectionError(str(e))
                 if self._circuit_breaker:
                     await self._circuit_breaker.record_failure()
-                
+
                 if attempt < self.max_retries - 1:
                     delay = self.retry_delay * (2 ** attempt)
                     logger.warning(f"Connection error: {e}, retrying in {delay}s")
                     await asyncio.sleep(delay)
                     continue
-            
+
             except asyncio.TimeoutError:
                 self.metrics.failed_requests += 1
                 last_error = JupiterTimeoutError(f"Request timed out after {self.timeout}s")
                 if self._circuit_breaker:
                     await self._circuit_breaker.record_failure()
-                
+
                 if attempt < self.max_retries - 1:
                     delay = self.retry_delay * (2 ** attempt)
                     logger.warning(f"Timeout, retrying in {delay}s")
                     await asyncio.sleep(delay)
                     continue
-            
+
             except JupiterAPIError:
                 raise
-        
+
         if last_error:
             raise last_error
         raise JupiterError("Max retries exceeded")
@@ -843,7 +843,7 @@ class JupiterClient:
                 self.metrics.cache_hits += 1
                 return cached
             self.metrics.cache_misses += 1
-        
+
         params: Dict[str, Any] = {
             "inputMint": input_mint,
             "outputMint": output_mint,
@@ -853,32 +853,32 @@ class JupiterClient:
             "onlyDirectRoutes": str(only_direct_routes).lower(),
             "asLegacyTransaction": str(as_legacy_transaction).lower()
         }
-        
+
         if max_accounts is not None:
             params["maxAccounts"] = str(max_accounts)
-        
+
         if dexes:
             params["dexes"] = ",".join(dexes)
-        
+
         if exclude_dexes:
             params["excludeDexes"] = ",".join(exclude_dexes)
-        
+
         try:
             data = await self._request("GET", f"{self.api_base}/quote", params=params)
             quote = SwapQuote.from_dict(data)
             self.metrics.quotes_fetched += 1
-            
+
             if self._cache:
                 await self._cache.quote_cache.set(cache_key, quote)
-            
+
             return quote
-        
+
         except JupiterAPIError as e:
             raise JupiterQuoteError(
                 f"Failed to get quote: {e}",
                 details={"input": input_mint, "output": output_mint, "amount": amount}
             ) from e
-    
+
     async def get_quotes(
         self,
         input_mint: str,
@@ -889,7 +889,7 @@ class JupiterClient:
         **kwargs
     ) -> List[SwapQuote]:
         quotes = []
-        
+
         try:
             main_quote = await self.get_quote(
                 input_mint, output_mint, amount, slippage_bps, **kwargs
@@ -897,7 +897,7 @@ class JupiterClient:
             quotes.append(main_quote)
         except JupiterQuoteError:
             pass
-        
+
         if len(quotes) < count:
             try:
                 direct_quote = await self.get_quote(
@@ -908,7 +908,7 @@ class JupiterClient:
                     quotes.append(direct_quote)
             except JupiterQuoteError:
                 pass
-        
+
         if len(quotes) < count:
             for dex in [DexId.RAYDIUM.value, DexId.ORCA_WHIRLPOOL.value]:
                 if len(quotes) >= count:
@@ -922,20 +922,20 @@ class JupiterClient:
                         quotes.append(dex_quote)
                 except JupiterQuoteError:
                     continue
-        
+
         quotes.sort(key=lambda q: q.out_amount, reverse=True)
         return quotes[:count]
-    
+
     def select_best_quote(self, quotes: List[SwapQuote]) -> Optional[SwapQuote]:
         if not quotes:
             return None
-        
+
         def score(q: SwapQuote) -> float:
             output_score = q.out_amount
             impact_penalty = q.price_impact_pct * 0.01 * q.out_amount
             hop_penalty = (q.num_hops - 1) * 0.001 * q.out_amount
             return output_score - impact_penalty - hop_penalty
-        
+
         return max(quotes, key=score)
 
     async def get_swap_transaction(
@@ -957,10 +957,10 @@ class JupiterClient:
             "useSharedAccounts": use_shared_accounts,
             "asLegacyTransaction": as_legacy_transaction
         }
-        
+
         if fee_account or self.referral_account:
             body["feeAccount"] = fee_account or self.referral_account
-        
+
         if compute_unit_price_micro_lamports is not None:
             body["computeUnitPriceMicroLamports"] = compute_unit_price_micro_lamports
         elif priority_level:
@@ -970,17 +970,17 @@ class JupiterClient:
                     "priorityLevel": priority_level
                 }
             }
-        
+
         if destination_token_account:
             body["destinationTokenAccount"] = destination_token_account
-        
+
         try:
             data = await self._request("POST", f"{self.api_base}/swap", json_data=body)
             return SwapTransaction.from_dict(data)
-        
+
         except JupiterAPIError as e:
             raise JupiterSwapError(f"Failed to get swap transaction: {e}") from e
-    
+
     async def execute_swap(
         self,
         quote: SwapQuote,
@@ -991,28 +991,28 @@ class JupiterClient:
         max_retries: int = 3
     ) -> SwapResult:
         self.metrics.swaps_executed += 1
-        
+
         try:
             from solders.transaction import VersionedTransaction
             from solders.signature import Signature
             from solana.rpc.commitment import Confirmed
-            
+
             user_pubkey = str(wallet_keypair.pubkey())
-            
+
             swap_tx = await self.get_swap_transaction(
                 quote=quote,
                 user_pubkey=user_pubkey,
                 compute_unit_price_micro_lamports=priority_fee_lamports
             )
-            
+
             tx_bytes = base64.b64decode(swap_tx.swap_transaction)
             transaction = VersionedTransaction.from_bytes(tx_bytes)
-            
+
             signed_tx = VersionedTransaction(
                 transaction.message,
                 [wallet_keypair]
             )
-            
+
             for attempt in range(max_retries):
                 try:
                     result = await rpc_client.send_transaction(
@@ -1023,19 +1023,19 @@ class JupiterClient:
                             "max_retries": 0
                         }
                     )
-                    
+
                     signature = str(result.value)
-                    
+
                     confirmation = await rpc_client.confirm_transaction(
                         Signature.from_string(signature),
                         commitment=Confirmed
                     )
-                    
+
                     if confirmation.value[0].err:
                         raise JupiterSwapError(f"Transaction failed: {confirmation.value[0].err}")
-                    
+
                     self.metrics.swaps_succeeded += 1
-                    
+
                     return SwapResult(
                         signature=signature,
                         input_mint=quote.input_mint,
@@ -1045,19 +1045,19 @@ class JupiterClient:
                         fee_amount=sum(r.fee_amount for r in quote.route_plan),
                         success=True
                     )
-                
+
                 except Exception as e:
                     if attempt < max_retries - 1:
                         await asyncio.sleep(1 * (attempt + 1))
                         continue
                     raise
-        
+
         except ImportError as e:
             raise JupiterSwapError(
                 "solders and solana-py required for swap execution. "
                 "Install with: pip install solders solana"
             ) from e
-        
+
         except Exception as e:
             self.metrics.swaps_failed += 1
             return SwapResult(
@@ -1073,24 +1073,24 @@ class JupiterClient:
 
     async def get_token_list(self, use_cache: bool = True) -> List[TokenInfo]:
         cache_key = "all_tokens"
-        
+
         if use_cache and self._cache:
             cached = await self._cache.token_list_cache.get(cache_key)
             if cached:
                 self.metrics.cache_hits += 1
                 return cached
             self.metrics.cache_misses += 1
-        
+
         data = await self._request("GET", f"{self.token_api_base}/all")
         tokens = [TokenInfo.from_dict(t) for t in data]
-        
+
         if self._cache:
             await self._cache.token_list_cache.set(cache_key, tokens)
             for token in tokens:
                 await self._cache.token_info_cache.set(token.address, token)
-        
+
         return tokens
-    
+
     async def get_token_info(self, mint: str, use_cache: bool = True) -> Optional[TokenInfo]:
         if use_cache and self._cache:
             cached = await self._cache.token_info_cache.get(mint)
@@ -1098,7 +1098,7 @@ class JupiterClient:
                 self.metrics.cache_hits += 1
                 return cached
             self.metrics.cache_misses += 1
-        
+
         try:
             data = await self._request("GET", f"{self.token_api_base}/strict")
             for token_data in data:
@@ -1109,35 +1109,35 @@ class JupiterClient:
                     return token
         except Exception:
             pass
-        
+
         tokens = await self.get_token_list(use_cache=use_cache)
         for token in tokens:
             if token.address == mint:
                 return token
-        
+
         return None
-    
+
     async def search_tokens(self, query: str, limit: int = 10) -> List[TokenInfo]:
         query_lower = query.lower()
         tokens = await self.get_token_list()
-        
+
         matches = []
         for token in tokens:
-            if (query_lower in token.symbol.lower() or 
+            if (query_lower in token.symbol.lower() or
                 query_lower in token.name.lower() or
                 query_lower == token.address.lower()):
                 matches.append(token)
                 if len(matches) >= limit:
                     break
-        
+
         def sort_key(t: TokenInfo) -> tuple:
             exact_symbol = t.symbol.lower() == query_lower
             starts_with = t.symbol.lower().startswith(query_lower)
             return (not exact_symbol, not starts_with, t.symbol)
-        
+
         matches.sort(key=sort_key)
         return matches[:limit]
-    
+
     async def get_token_price(
         self,
         mint: str,
@@ -1145,36 +1145,36 @@ class JupiterClient:
         use_cache: bool = True
     ) -> Optional[TokenPrice]:
         cache_key = f"price:{mint}:{vs_currency}"
-        
+
         if use_cache and self._cache:
             cached = await self._cache.price_cache.get(cache_key)
             if cached:
                 self.metrics.cache_hits += 1
                 return cached
             self.metrics.cache_misses += 1
-        
+
         try:
             params = {"ids": mint}
             if vs_currency.lower() == "sol":
                 params["vsToken"] = SOL_MINT
-            
+
             data = await self._request("GET", f"{self.price_api_base}/price", params=params)
-            
+
             price_data = data.get("data", {}).get(mint)
             if not price_data:
                 return None
-            
+
             price = TokenPrice.from_dict(mint, price_data)
-            
+
             if self._cache:
                 await self._cache.price_cache.set(cache_key, price)
-            
+
             return price
-        
+
         except Exception as e:
             logger.warning(f"Failed to get price for {mint}: {e}")
             return None
-    
+
     async def get_token_prices(
         self,
         mints: List[str],
@@ -1182,26 +1182,26 @@ class JupiterClient:
     ) -> Dict[str, TokenPrice]:
         if not mints:
             return {}
-        
+
         try:
             params = {"ids": ",".join(mints)}
             if vs_currency.lower() == "sol":
                 params["vsToken"] = SOL_MINT
-            
+
             data = await self._request("GET", f"{self.price_api_base}/price", params=params)
-            
+
             results = {}
             for mint, price_data in data.get("data", {}).items():
                 if price_data:
                     price = TokenPrice.from_dict(mint, price_data)
                     results[mint] = price
-                    
+
                     if self._cache:
                         cache_key = f"price:{mint}:{vs_currency}"
                         await self._cache.price_cache.set(cache_key, price)
-            
+
             return results
-        
+
         except Exception as e:
             logger.warning(f"Failed to get prices: {e}")
             return {}
@@ -1209,13 +1209,13 @@ class JupiterClient:
     async def analyze_route(self, quote: SwapQuote) -> RouteAnalysis:
         input_price = await self.get_token_price(quote.input_mint)
         output_price = await self.get_token_price(quote.output_mint)
-        
+
         return RouteAnalysis.from_quote(
             quote,
             input_price.price_usd if input_price else 0,
             output_price.price_usd if output_price else 0
         )
-    
+
     async def compare_routes(
         self,
         input_mint: str,
@@ -1226,21 +1226,21 @@ class JupiterClient:
         quotes = await self.get_quotes(
             input_mint, output_mint, amount, slippage_bps, count=5
         )
-        
+
         analyses = []
         for quote in quotes:
             analysis = await self.analyze_route(quote)
             analyses.append(analysis)
-        
+
         analyses.sort(key=lambda a: a.quote.out_amount, reverse=True)
         return analyses
-    
+
     def get_metrics(self) -> Dict[str, Any]:
         return self.metrics.to_dict()
-    
+
     def reset_metrics(self) -> None:
         self.metrics = JupiterMetrics()
-    
+
     async def health_check(self) -> bool:
         try:
             await self.get_quote(
@@ -1276,7 +1276,7 @@ async def get_sol_to_usdc_price() -> float:
 
 __all__ = [
     "JupiterClient",
-    
+
     "TokenInfo",
     "TokenPrice",
     "SwapQuote",
@@ -1285,10 +1285,10 @@ __all__ = [
     "RoutePlan",
     "RouteAnalysis",
     "JupiterMetrics",
-    
+
     "SwapMode",
     "DexId",
-    
+
     "JupiterError",
     "JupiterAPIError",
     "JupiterQuoteError",
@@ -1297,12 +1297,12 @@ __all__ = [
     "JupiterTimeoutError",
     "JupiterConnectionError",
     "CircuitBreakerOpenError",
-    
+
     "SOL_MINT",
     "USDC_MINT",
     "USDT_MINT",
     "DEFAULT_SLIPPAGE_BPS",
-    
+
     "quick_quote",
     "get_sol_to_usdc_price",
 ]
