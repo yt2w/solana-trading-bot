@@ -1,12 +1,3 @@
-"""
-Production-Grade Tamper-Evident Audit Logging System
-=====================================================
-Secure, compliant audit logging with chain integrity verification,
-HMAC signatures, and comprehensive security features.
-
-Author: Security Team
-Version: 2.0.0
-"""
 
 import asyncio
 import gzip
@@ -45,25 +36,17 @@ try:
     import fcntl
     FCNTL_AVAILABLE = True
 except ImportError:
-    FCNTL_AVAILABLE = False  # Windows
+    FCNTL_AVAILABLE = False
 
 try:
     import msvcrt
     MSVCRT_AVAILABLE = True
 except ImportError:
-    MSVCRT_AVAILABLE = False  # Unix
-
+    MSVCRT_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
-
-# =============================================================================
-# ENUMS
-# =============================================================================
-
 class AuditAction(Enum):
-    """Comprehensive audit action types."""
-    # Wallet Operations
     WALLET_CREATE = "wallet.create"
     WALLET_IMPORT = "wallet.import"
     WALLET_EXPORT = "wallet.export"
@@ -71,13 +54,11 @@ class AuditAction(Enum):
     WALLET_VIEW = "wallet.view"
     WALLET_LIST = "wallet.list"
     
-    # Key Operations
     KEY_ACCESS = "key.access"
     KEY_DECRYPT = "key.decrypt"
     KEY_GENERATE = "key.generate"
     KEY_ROTATE = "key.rotate"
     
-    # Trading Operations
     TRADE_QUOTE = "trade.quote"
     TRADE_EXECUTE = "trade.execute"
     TRADE_CONFIRM = "trade.confirm"
@@ -85,12 +66,10 @@ class AuditAction(Enum):
     TRADE_CANCEL = "trade.cancel"
     TRADE_TIMEOUT = "trade.timeout"
     
-    # Settings
     SETTINGS_VIEW = "settings.view"
     SETTINGS_CHANGE = "settings.change"
     SETTINGS_RESET = "settings.reset"
     
-    # Authentication
     LOGIN = "auth.login"
     LOGOUT = "auth.logout"
     AUTH_FAIL = "auth.fail"
@@ -98,43 +77,35 @@ class AuditAction(Enum):
     SESSION_CREATE = "session.create"
     SESSION_EXPIRE = "session.expire"
     
-    # Rate Limiting
     RATE_LIMIT_HIT = "rate.hit"
     RATE_LIMIT_EXCEEDED = "rate.exceeded"
     RATE_LIMIT_RESET = "rate.reset"
     
-    # Security Events
     SECURITY_ALERT = "security.alert"
     SUSPICIOUS_ACTIVITY = "security.suspicious"
     TAMPERING_DETECTED = "security.tampering"
     INVALID_SIGNATURE = "security.invalid_signature"
     CHAIN_BROKEN = "security.chain_broken"
     
-    # System Events
     SYSTEM_START = "system.start"
     SYSTEM_STOP = "system.stop"
     SYSTEM_ERROR = "system.error"
     SYSTEM_MAINTENANCE = "system.maintenance"
     
-    # Data Operations
     DATA_EXPORT = "data.export"
     DATA_DELETE = "data.delete"
     DATA_BACKUP = "data.backup"
     DATA_RESTORE = "data.restore"
     
-    # Admin Operations
     ADMIN_ACTION = "admin.action"
     CONFIG_CHANGE = "admin.config"
     
-    # API Operations
     API_CALL = "api.call"
     API_ERROR = "api.error"
     WEBHOOK_SEND = "webhook.send"
     WEBHOOK_FAIL = "webhook.fail"
 
-
 class AuditResult(Enum):
-    """Audit operation results."""
     SUCCESS = "success"
     FAILURE = "failure"
     PARTIAL = "partial"
@@ -144,69 +115,47 @@ class AuditResult(Enum):
     ERROR = "error"
     SKIPPED = "skipped"
 
-
 class AlertSeverity(Enum):
-    """Alert severity levels."""
     INFO = "info"
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
-
-# =============================================================================
-# DATA CLASSES
-# =============================================================================
-
 @dataclass
 class AuditEntry:
-    """
-    Immutable audit log entry with tamper detection.
-    All fields are included in the chain hash for integrity verification.
-    """
-    # Core identification
-    timestamp: str  # ISO 8601 with timezone
-    entry_id: str   # UUID v4
-    sequence_number: int  # Monotonic counter
+    timestamp: str
+    entry_id: str
+    sequence_number: int
     
-    # Action details
-    action: str  # AuditAction value
-    result: str  # AuditResult value
+    action: str
+    result: str
     
-    # User context
-    user_id: Optional[str] = None  # Telegram ID
+    user_id: Optional[str] = None
     username: Optional[str] = None
     
-    # Wallet context (masked)
     wallet_address: Optional[str] = None
     
-    # Additional details
     details: Dict[str, Any] = field(default_factory=dict)
     
-    # Security context
     ip_address: Optional[str] = None
     session_id: Optional[str] = None
     user_agent: Optional[str] = None
     
-    # Tamper detection
     previous_hash: str = ""
     chain_hash: str = ""
     signature: str = ""
     
-    # Metadata
     version: str = "2.0"
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for serialization."""
         return asdict(self)
     
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'AuditEntry':
-        """Create from dictionary."""
         return cls(**data)
     
     def get_hashable_content(self) -> str:
-        """Get content for hash computation (excludes hash fields)."""
         content = {
             'timestamp': self.timestamp,
             'entry_id': self.entry_id,
@@ -225,10 +174,8 @@ class AuditEntry:
         }
         return json.dumps(content, sort_keys=True, separators=(',', ':'))
 
-
 @dataclass
 class AuditStats:
-    """Audit log statistics."""
     total_entries: int = 0
     entries_today: int = 0
     entries_this_hour: int = 0
@@ -239,10 +186,8 @@ class AuditStats:
     last_entry_time: Optional[str] = None
     oldest_entry_time: Optional[str] = None
 
-
 @dataclass 
 class IntegrityReport:
-    """Chain integrity verification report."""
     is_valid: bool
     total_entries: int
     verified_entries: int
@@ -251,13 +196,7 @@ class IntegrityReport:
     verified_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     merkle_root: Optional[str] = None
 
-
-# =============================================================================
-# SECURITY UTILITIES
-# =============================================================================
-
 class SecurityUtils:
-    """Security utility functions."""
     
     SOLANA_ADDRESS_PATTERN = re.compile(r'^[1-9A-HJ-NP-Za-km-z]{32,44}$')
     
@@ -270,7 +209,6 @@ class SecurityUtils:
     
     @staticmethod
     def mask_address(address: Optional[str], visible_chars: int = 4) -> Optional[str]:
-        """Mask wallet address for privacy. Shows first and last N characters."""
         if not address:
             return None
         if len(address) <= visible_chars * 2:
@@ -279,14 +217,13 @@ class SecurityUtils:
     
     @staticmethod
     def mask_ip(ip: Optional[str]) -> Optional[str]:
-        """Mask IP address (show only first two octets for IPv4)."""
         if not ip:
             return None
-        if ':' in ip:  # IPv6
+        if ':' in ip:
             parts = ip.split(':')
             if len(parts) >= 2:
                 return f"{parts[0]}:{parts[1]}:****"
-        else:  # IPv4
+        else:
             parts = ip.split('.')
             if len(parts) == 4:
                 return f"{parts[0]}.{parts[1]}.*.*"
@@ -294,7 +231,6 @@ class SecurityUtils:
     
     @classmethod
     def sanitize_details(cls, details: Dict[str, Any]) -> Dict[str, Any]:
-        """Remove sensitive information from details dict."""
         if not details:
             return {}
         
@@ -325,7 +261,6 @@ class SecurityUtils:
     
     @staticmethod
     def _looks_like_secret(value: str) -> bool:
-        """Check if a string looks like a secret/key."""
         if not value or len(value) < 20:
             return False
         if len(value) in (64, 88) and all(c in '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz' for c in value):
@@ -339,24 +274,20 @@ class SecurityUtils:
     
     @staticmethod
     def generate_hmac(key: bytes, data: str) -> str:
-        """Generate HMAC-SHA256 signature."""
         return hmac.new(key, data.encode('utf-8'), hashlib.sha256).hexdigest()
     
     @staticmethod
     def verify_hmac(key: bytes, data: str, signature: str) -> bool:
-        """Verify HMAC-SHA256 signature."""
         expected = hmac.new(key, data.encode('utf-8'), hashlib.sha256).hexdigest()
         return hmac.compare_digest(expected, signature)
     
     @staticmethod
     def compute_chain_hash(content: str, previous_hash: str) -> str:
-        """Compute chain hash including previous hash."""
         combined = f"{previous_hash}:{content}"
         return hashlib.sha256(combined.encode('utf-8')).hexdigest()
     
     @staticmethod
     def compute_merkle_root(hashes: List[str]) -> str:
-        """Compute Merkle tree root from list of hashes."""
         if not hashes:
             return hashlib.sha256(b'empty').hexdigest()
         if len(hashes) == 1:
@@ -369,13 +300,7 @@ class SecurityUtils:
             next_level.append(hashlib.sha256(combined.encode()).hexdigest())
         return SecurityUtils.compute_merkle_root(next_level)
 
-
-# =============================================================================
-# FILE LOCKING
-# =============================================================================
-
 class FileLock:
-    """Cross-platform file locking."""
     
     def __init__(self, filepath: Path):
         self.filepath = filepath
@@ -383,7 +308,6 @@ class FileLock:
         self._handle = None
     
     async def acquire(self, timeout: float = 10.0) -> bool:
-        """Acquire file lock with timeout."""
         start = asyncio.get_event_loop().time()
         
         while True:
@@ -418,7 +342,6 @@ class FileLock:
                 await asyncio.sleep(0.1)
     
     def release(self):
-        """Release file lock."""
         if self._handle:
             try:
                 if FCNTL_AVAILABLE:
@@ -447,13 +370,7 @@ class FileLock:
     async def __aexit__(self, *args):
         self.release()
 
-
-# =============================================================================
-# ENCRYPTION SUPPORT
-# =============================================================================
-
 class AuditEncryption:
-    """Optional encryption for sensitive audit details."""
     
     def __init__(self, key: Optional[bytes] = None, password: Optional[str] = None):
         if not CRYPTO_AVAILABLE:
@@ -477,13 +394,11 @@ class AuditEncryption:
             self._fernet = None
     
     def encrypt(self, data: str) -> str:
-        """Encrypt string data."""
         if not self._fernet:
             return data
         return self._fernet.encrypt(data.encode()).decode()
     
     def decrypt(self, data: str) -> str:
-        """Decrypt string data."""
         if not self._fernet:
             return data
         return self._fernet.decrypt(data.encode()).decode()
@@ -492,13 +407,7 @@ class AuditEncryption:
     def enabled(self) -> bool:
         return self._fernet is not None
 
-
-# =============================================================================
-# WEBHOOK SUPPORT
-# =============================================================================
-
 class WebhookNotifier:
-    """Send audit alerts to external systems."""
     
     def __init__(self, webhook_url: Optional[str] = None, timeout: float = 10.0):
         self.webhook_url = webhook_url
@@ -506,7 +415,6 @@ class WebhookNotifier:
         self._session = None
     
     async def notify(self, entry: AuditEntry, severity: AlertSeverity) -> bool:
-        """Send notification for audit entry."""
         if not self.webhook_url:
             return False
         
@@ -538,23 +446,7 @@ class WebhookNotifier:
             logger.error(f"Webhook notification failed: {e}")
             return False
 
-
-# =============================================================================
-# MAIN AUDIT LOGGER
-# =============================================================================
-
 class SecureAuditLogger:
-    """
-    Production-grade tamper-evident audit logging system.
-    
-    Features:
-    - HMAC-signed entries
-    - Hash chain for tamper detection
-    - Automatic log rotation
-    - Query and search capabilities
-    - GDPR compliance support
-    - Real-time alerting
-    """
     
     GENESIS_HASH = "0" * 64
     
@@ -569,19 +461,6 @@ class SecureAuditLogger:
         webhook_url: Optional[str] = None,
         auto_verify_on_start: bool = True,
     ):
-        """
-        Initialize the audit logger.
-        
-        Args:
-            log_dir: Directory for audit logs
-            hmac_key: Key for HMAC signatures (generated if not provided)
-            encryption_key: Optional key for encrypting sensitive details
-            retention_days: How long to keep logs
-            rotation_size_mb: Max size before rotation
-            enable_compression: Compress rotated logs
-            webhook_url: URL for alert notifications
-            auto_verify_on_start: Verify chain integrity on startup
-        """
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
         
@@ -620,26 +499,21 @@ class SecureAuditLogger:
     
     @property
     def _current_log_path(self) -> Path:
-        """Current active log file path."""
         return self.log_dir / "audit.jsonl"
     
     @property
     def _index_path(self) -> Path:
-        """Index file for fast lookups."""
         return self.log_dir / "audit_index.json"
     
     @property
     def _state_path(self) -> Path:
-        """State file for persistence."""
         return self.log_dir / "audit_state.json"
     
     @property
     def _checkpoint_path(self) -> Path:
-        """Checkpoint file for Merkle roots."""
         return self.log_dir / "audit_checkpoints.jsonl"
     
     async def initialize(self) -> 'SecureAuditLogger':
-        """Initialize the logger, loading state and verifying chain."""
         async with self._lock:
             if self._initialized:
                 return self
@@ -657,7 +531,6 @@ class SecureAuditLogger:
             return self
     
     async def _load_state(self):
-        """Load persisted state from state file."""
         if self._state_path.exists():
             try:
                 data = json.loads(self._state_path.read_text())
@@ -670,7 +543,6 @@ class SecureAuditLogger:
             await self._reconstruct_state()
     
     async def _reconstruct_state(self):
-        """Reconstruct state by reading last log entry."""
         if not self._current_log_path.exists():
             return
         
@@ -695,7 +567,6 @@ class SecureAuditLogger:
             logger.error(f"Could not reconstruct state: {e}")
     
     async def _save_state(self):
-        """Persist current state."""
         try:
             state = {
                 'sequence_number': self._sequence_number,
@@ -723,24 +594,6 @@ class SecureAuditLogger:
         user_agent: Optional[str] = None,
         encrypt_details: bool = False,
     ) -> AuditEntry:
-        """
-        Log an audit entry.
-        
-        Args:
-            action: The action being audited
-            result: Result of the action
-            user_id: User identifier (e.g., Telegram ID)
-            username: Optional username
-            wallet_address: Wallet address (will be masked)
-            details: Additional details (sensitive data will be sanitized)
-            ip_address: Client IP (will be masked)
-            session_id: Session identifier
-            user_agent: Client user agent
-            encrypt_details: Whether to encrypt the details field
-            
-        Returns:
-            The created AuditEntry
-        """
         if not self._initialized:
             await self.initialize()
         
@@ -795,7 +648,6 @@ class SecureAuditLogger:
         return entry
     
     async def _write_entry(self, entry: AuditEntry):
-        """Write entry to log file atomically."""
         async with self._file_lock:
             try:
                 with open(self._current_log_path, 'a', encoding='utf-8') as f:
@@ -809,7 +661,6 @@ class SecureAuditLogger:
                 raise
     
     async def _check_rotation(self):
-        """Check if log rotation is needed."""
         try:
             if not self._current_log_path.exists():
                 return
@@ -822,7 +673,6 @@ class SecureAuditLogger:
             logger.error(f"Rotation check failed: {e}")
     
     async def _rotate_log(self):
-        """Rotate current log file."""
         try:
             timestamp = datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
             rotated_name = f"audit_{timestamp}.jsonl"
@@ -846,7 +696,6 @@ class SecureAuditLogger:
             logger.error(f"Log rotation failed: {e}")
     
     async def _compress_file(self, filepath: Path):
-        """Compress a file with gzip."""
         try:
             compressed_path = filepath.with_suffix('.jsonl.gz')
             
@@ -861,7 +710,6 @@ class SecureAuditLogger:
             logger.error(f"Compression failed: {e}")
     
     async def _cleanup_old_logs(self):
-        """Remove logs older than retention period."""
         try:
             cutoff = datetime.now(timezone.utc) - timedelta(days=self.retention_days)
             
@@ -881,7 +729,6 @@ class SecureAuditLogger:
             logger.error(f"Cleanup failed: {e}")
     
     async def _create_checkpoint(self):
-        """Create a Merkle tree checkpoint."""
         try:
             hashes = []
             async for entry in self._read_entries():
@@ -914,7 +761,6 @@ class SecureAuditLogger:
             logger.error(f"Checkpoint creation failed: {e}")
     
     async def _handle_alerts(self, entry: AuditEntry, action: AuditAction):
-        """Process alerts for the entry."""
         severity = self._alert_actions.get(action)
         
         if not severity:
@@ -933,20 +779,13 @@ class SecureAuditLogger:
         self, 
         callback: Callable[[AuditEntry, AlertSeverity], Awaitable[None]]
     ):
-        """Register a callback for alert notifications."""
         self._alert_callbacks.append(callback)
 
-    # =========================================================================
-    # VERIFICATION
-    # =========================================================================
-    
     async def verify_chain(self) -> IntegrityReport:
-        """Verify the integrity of the audit chain."""
         async with self._lock:
             return await self._verify_chain_internal()
     
     async def _verify_chain_internal(self) -> IntegrityReport:
-        """Internal chain verification (caller must hold lock)."""
         errors = []
         verified = 0
         first_invalid = None
@@ -1013,21 +852,15 @@ class SecureAuditLogger:
         )
     
     async def verify_entry(self, entry: AuditEntry) -> bool:
-        """Verify a single entry's signature."""
         signature_content = f"{entry.get_hashable_content()}:{entry.chain_hash}"
         return SecurityUtils.verify_hmac(
             self._hmac_key, signature_content, entry.signature
         )
 
-    # =========================================================================
-    # QUERY METHODS
-    # =========================================================================
-    
     async def _read_entries(
         self,
         filepath: Optional[Path] = None
     ) -> AsyncIterator[AuditEntry]:
-        """Read entries from log file."""
         filepath = filepath or self._current_log_path
         
         if not filepath.exists():
@@ -1057,21 +890,6 @@ class SecureAuditLogger:
         limit: int = 1000,
         offset: int = 0,
     ) -> List[AuditEntry]:
-        """
-        Query audit logs with filters.
-        
-        Args:
-            start_time: Filter entries after this time
-            end_time: Filter entries before this time  
-            actions: Filter by action types
-            results: Filter by result types
-            user_id: Filter by user ID
-            limit: Maximum entries to return
-            offset: Number of entries to skip
-            
-        Returns:
-            List of matching AuditEntry objects
-        """
         action_values = {a.value for a in actions} if actions else None
         result_values = {r.value for r in results} if results else None
         
@@ -1114,7 +932,6 @@ class SecureAuditLogger:
         user_id: str,
         limit: int = 100
     ) -> List[AuditEntry]:
-        """Get all audit entries for a specific user."""
         return await self.query_logs(user_id=user_id, limit=limit)
     
     async def get_entries_by_action(
@@ -1122,7 +939,6 @@ class SecureAuditLogger:
         action: AuditAction,
         limit: int = 100
     ) -> List[AuditEntry]:
-        """Get entries filtered by action type."""
         return await self.query_logs(actions=[action], limit=limit)
     
     async def get_security_events(
@@ -1130,7 +946,6 @@ class SecureAuditLogger:
         start_time: Optional[datetime] = None,
         limit: int = 100
     ) -> List[AuditEntry]:
-        """Get security-related audit entries."""
         security_actions = [
             AuditAction.SECURITY_ALERT,
             AuditAction.SUSPICIOUS_ACTIVITY,
@@ -1147,18 +962,12 @@ class SecureAuditLogger:
         )
     
     async def get_recent_entries(self, count: int = 50) -> List[AuditEntry]:
-        """Get most recent entries."""
         entries = []
         async for entry in self._read_entries():
             entries.append(entry)
         return entries[-count:] if len(entries) > count else entries
 
-    # =========================================================================
-    # STATISTICS
-    # =========================================================================
-    
     async def get_stats(self, force_refresh: bool = False) -> AuditStats:
-        """Get audit log statistics."""
         if not force_refresh and self._stats_cache:
             age = datetime.now(timezone.utc) - self._stats_cache_time
             if age.total_seconds() < 60:
@@ -1201,25 +1010,11 @@ class SecureAuditLogger:
         
         return stats
     
-    # =========================================================================
-    # COMPLIANCE / GDPR
-    # =========================================================================
-    
     async def export_user_data(
         self,
         user_id: str,
         format: str = 'json'
     ) -> Union[str, bytes]:
-        """
-        Export all data for a user (GDPR compliance).
-        
-        Args:
-            user_id: User to export data for
-            format: 'json' or 'csv'
-            
-        Returns:
-            Exported data as string or bytes
-        """
         entries = await self.get_user_activity(user_id, limit=100000)
         
         if format == 'csv':
@@ -1250,17 +1045,6 @@ class SecureAuditLogger:
             )
     
     async def delete_user_data(self, user_id: str) -> int:
-        """
-        Anonymize user data (GDPR right to erasure).
-        
-        Note: Due to chain integrity, we anonymize rather than delete.
-        
-        Args:
-            user_id: User to anonymize
-            
-        Returns:
-            Number of entries anonymized
-        """
         logger.warning(
             f"User data deletion requested for {user_id}. "
             "Implementing anonymization to preserve chain integrity."
@@ -1280,7 +1064,6 @@ class SecureAuditLogger:
         return 0
     
     async def generate_integrity_report(self) -> Dict[str, Any]:
-        """Generate a comprehensive integrity report."""
         verification = await self.verify_chain()
         stats = await self.get_stats()
         
@@ -1307,12 +1090,7 @@ class SecureAuditLogger:
             }
         }
 
-    # =========================================================================
-    # LIFECYCLE
-    # =========================================================================
-    
     async def close(self):
-        """Clean shutdown of audit logger."""
         async with self._lock:
             await self._save_state()
             logger.info("SecureAuditLogger closed")
@@ -1324,51 +1102,34 @@ class SecureAuditLogger:
     async def __aexit__(self, *args):
         await self.close()
 
-
-# =============================================================================
-# CONVENIENCE FUNCTIONS
-# =============================================================================
-
 _audit_logger: Optional[SecureAuditLogger] = None
 
-
 async def get_audit_logger() -> SecureAuditLogger:
-    """Get or create the global audit logger instance."""
     global _audit_logger
     if _audit_logger is None:
         raise RuntimeError("Audit logger not initialized. Call init_audit_logger first.")
     return _audit_logger
-
 
 async def init_audit_logger(
     log_dir: Union[str, Path],
     hmac_key: Optional[bytes] = None,
     **kwargs
 ) -> SecureAuditLogger:
-    """Initialize the global audit logger."""
     global _audit_logger
     _audit_logger = SecureAuditLogger(log_dir, hmac_key, **kwargs)
     await _audit_logger.initialize()
     return _audit_logger
-
 
 async def audit_log(
     action: AuditAction,
     result: AuditResult,
     **kwargs
 ) -> AuditEntry:
-    """Convenience function to log an audit entry."""
     logger_instance = await get_audit_logger()
     return await logger_instance.log(action, result, **kwargs)
 
-
-# =============================================================================
-# EXAMPLE USAGE
-# =============================================================================
-
 if __name__ == "__main__":
     async def main():
-        """Example usage of the audit logger."""
         
         async with SecureAuditLogger(
             log_dir="./audit_logs",
@@ -1387,7 +1148,7 @@ if __name__ == "__main__":
                 user_id="123456789",
                 username="test_user",
                 wallet_address="7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU",
-                ip_address="127.0.0.1"  # Example IP,
+                ip_address="127.0.0.1"
             )
             
             await audit.log(
