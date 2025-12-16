@@ -38,27 +38,27 @@ class PerformanceStats:
     average_hold_time: timedelta = field(default_factory=lambda: timedelta(0))
     last_trade_time: Optional[datetime] = None
     tokens_traded: Set[str] = field(default_factory=set)
-    
+
     def update_stats(self, trade_pnl: Decimal, trade_size: Decimal, is_win: bool):
         self.total_trades += 1
         self.total_volume_sol += trade_size
-        
+
         if is_win:
             self.winning_trades += 1
         else:
             self.losing_trades += 1
-            
+
         self.total_pnl_sol += trade_pnl
         self.average_trade_size = self.total_volume_sol / self.total_trades
-        
+
         if trade_pnl > self.best_trade_pnl:
             self.best_trade_pnl = trade_pnl
         if trade_pnl < self.worst_trade_pnl:
             self.worst_trade_pnl = trade_pnl
-            
+
         self.win_rate = (self.winning_trades / self.total_trades) * 100 if self.total_trades > 0 else 0
         self.last_trade_time = datetime.utcnow()
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_trades": self.total_trades,
@@ -90,7 +90,7 @@ class TrackedWallet:
     failed_copies: int = 0
     total_copy_volume: Decimal = Decimal("0")
     copy_pnl: Decimal = Decimal("0")
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "address": self.address,
@@ -129,7 +129,7 @@ class CopyConfig:
     created_at: datetime = field(default_factory=datetime.utcnow)
     copies_today: int = 0
     last_copy_date: Optional[datetime] = None
-    
+
     def should_copy(self, trade_type: 'TradeType', token_mint: str, trade_size: Decimal) -> Tuple[bool, str]:
         if not self.is_active:
             return False, "Copy config is not active"
@@ -148,16 +148,16 @@ class CopyConfig:
         if self.copies_today >= self.max_copies_per_day:
             return False, f"Daily copy limit reached: {self.max_copies_per_day}"
         return True, "OK"
-    
+
     def _is_new_day(self) -> bool:
         if not self.last_copy_date:
             return True
         return datetime.utcnow().date() > self.last_copy_date.date()
-    
+
     def calculate_copy_amount(self, original_amount: Decimal) -> Decimal:
         copy_amount = original_amount * Decimal(str(self.copy_percentage / 100))
         return min(copy_amount, self.max_copy_amount)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "source_wallet": self.source_wallet,
@@ -192,7 +192,7 @@ class DetectedTrade:
     timestamp: datetime
     program_id: str
     raw_data: Dict[str, Any] = field(default_factory=dict)
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "signature": self.signature,
@@ -218,7 +218,7 @@ class CopyResult:
     error_message: Optional[str] = None
     slippage_actual: Optional[float] = None
     execution_time_ms: Optional[int] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "original_signature": self.original_trade.signature,
@@ -233,13 +233,13 @@ class CopyResult:
         }
 
 class TransactionParser:
-    
+
     JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
     RAYDIUM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8"
     ORCA_WHIRLPOOL = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"
     PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P"
     WSOL_MINT = "So11111111111111111111111111111111111111112"
-    
+
     @classmethod
     def parse_transaction(cls, tx_data: Dict[str, Any]) -> Optional['DetectedTrade']:
         try:
@@ -255,7 +255,7 @@ class TransactionParser:
         except Exception as e:
             logger.debug(f"Failed to parse transaction: {e}")
             return None
-    
+
     @classmethod
     def _find_dex_program(cls, account_keys: List[str], tx_data: Dict) -> Optional[str]:
         dex_programs = [cls.JUPITER_V6, cls.RAYDIUM_V4, cls.ORCA_WHIRLPOOL, cls.PUMP_FUN]
@@ -263,20 +263,20 @@ class TransactionParser:
             if program in account_keys:
                 return program
         return None
-    
+
     @classmethod
     def _parse_swap(cls, tx_data: Dict, signer: str, signature: str, program_id: str) -> Optional['DetectedTrade']:
         try:
             pre_balances = tx_data.get("meta", {}).get("preTokenBalances", [])
             post_balances = tx_data.get("meta", {}).get("postTokenBalances", [])
-            
+
             pre_sol = tx_data.get("meta", {}).get("preBalances", [0])[0]
             post_sol = tx_data.get("meta", {}).get("postBalances", [0])[0]
             sol_change = Decimal(str((post_sol - pre_sol) / 1e9))
-            
+
             token_mint = None
             token_change = Decimal("0")
-            
+
             for post in post_balances:
                 if post.get("owner") == signer:
                     mint = post.get("mint")
@@ -291,10 +291,10 @@ class TransactionParser:
                         if abs(change) > abs(token_change):
                             token_change = change
                             token_mint = mint
-            
+
             if not token_mint:
                 return None
-            
+
             if token_change > 0 and sol_change < 0:
                 trade_type = TradeType.BUY
                 amount_sol = abs(sol_change)
@@ -304,9 +304,9 @@ class TransactionParser:
             else:
                 trade_type = TradeType.UNKNOWN
                 amount_sol = abs(sol_change)
-            
+
             price = amount_sol / abs(token_change) if token_change != 0 else Decimal("0")
-            
+
             return DetectedTrade(
                 signature=signature,
                 wallet=signer,
@@ -325,7 +325,7 @@ class TransactionParser:
             return None
 
 class WalletMonitor:
-    
+
     def __init__(
         self,
         helius_api_key: str,
@@ -340,44 +340,44 @@ class WalletMonitor:
         self._reconnect_attempts = 0
         self._max_reconnect_attempts = 10
         self._reconnect_delay = 5
-        
+
     async def start(self):
         self._running = True
         asyncio.create_task(self._connect())
-        
+
     async def stop(self):
         self._running = False
         if self._ws:
             await self._ws.close()
             self._ws = None
-            
+
     async def add_wallet(self, address: str):
         if address not in self._monitored_wallets:
             self._monitored_wallets.add(address)
             if self._ws:
                 await self._subscribe_to_wallet(address)
-                
+
     async def remove_wallet(self, address: str):
         self._monitored_wallets.discard(address)
-                
+
     async def _connect(self):
         try:
             import websockets
         except ImportError:
             logger.warning("websockets not installed, using polling mode")
             return
-            
+
         while self._running and self._reconnect_attempts < self._max_reconnect_attempts:
             try:
                 logger.info("Connecting to Helius WebSocket...")
                 self._ws = await websockets.connect(self.websocket_url)
                 self._reconnect_attempts = 0
-                
+
                 for wallet in self._monitored_wallets:
                     await self._subscribe_to_wallet(wallet)
-                
+
                 await self._listen()
-                
+
             except Exception as e:
                 logger.error(f"WebSocket error: {e}")
                 self._reconnect_attempts += 1
@@ -385,7 +385,7 @@ class WalletMonitor:
                     delay = self._reconnect_delay * (2 ** min(self._reconnect_attempts, 5))
                     logger.info(f"Reconnecting in {delay}s (attempt {self._reconnect_attempts})")
                     await asyncio.sleep(delay)
-                    
+
     async def _subscribe_to_wallet(self, address: str):
         if not self._ws:
             return
@@ -404,7 +404,7 @@ class WalletMonitor:
             logger.info(f"Subscribed to wallet: {address[:8]}...")
         except Exception as e:
             logger.error(f"Failed to subscribe to wallet {address}: {e}")
-            
+
     async def _listen(self):
         if not self._ws:
             return
@@ -424,7 +424,7 @@ class WalletMonitor:
                 logger.debug("Received non-JSON message")
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
-                
+
     async def _handle_trade(self, trade: 'DetectedTrade'):
         try:
             if self.on_trade_detected:
@@ -436,7 +436,7 @@ class WalletMonitor:
             logger.error(f"Error in trade handler: {e}")
 
 class CopyTradingEngine:
-    
+
     def __init__(
         self,
         helius_api_key: str,
@@ -448,7 +448,7 @@ class CopyTradingEngine:
         self.jupiter_api_url = jupiter_api_url
         self.notification_callback = notification_callback
         self.safety_checker = safety_checker
-        
+
         self._tracked_wallets: Dict[str, TrackedWallet] = {}
         self._copy_configs: Dict[str, CopyConfig] = {}
         self._copy_history: List[CopyResult] = []
@@ -456,7 +456,7 @@ class CopyTradingEngine:
         self._scam_blacklist: Set[str] = set()
         self._monitor: Optional[WalletMonitor] = None
         self._copy_semaphore = asyncio.Semaphore(5)
-        
+
         self._stats = {
             "total_copies": 0,
             "successful_copies": 0,
@@ -464,7 +464,7 @@ class CopyTradingEngine:
             "total_volume": Decimal("0"),
             "total_pnl": Decimal("0")
         }
-        
+
     async def start(self):
         logger.info("Starting Copy Trading Engine...")
         self._monitor = WalletMonitor(
@@ -474,12 +474,12 @@ class CopyTradingEngine:
         for address in self._tracked_wallets.keys():
             await self._monitor.add_wallet(address)
         await self._monitor.start()
-        
+
     async def stop(self):
         logger.info("Stopping Copy Trading Engine...")
         if self._monitor:
             await self._monitor.stop()
-            
+
     async def track_wallet(
         self,
         address: str,
@@ -492,10 +492,10 @@ class CopyTradingEngine:
             existing = self._tracked_wallets[address]
             logger.info(f"Already tracking wallet {address} as '{existing.nickname}'")
             return existing
-        
+
         if address in self._scam_blacklist:
             raise ValueError(f"Wallet {address} is on the scam blacklist")
-        
+
         wallet = TrackedWallet(
             address=address,
             nickname=nickname,
@@ -503,40 +503,40 @@ class CopyTradingEngine:
             tags=tags or [],
             notes=notes
         )
-        
+
         self._tracked_wallets[address] = wallet
-        
+
         if self._monitor:
             await self._monitor.add_wallet(address)
-        
+
         logger.info(f"Now tracking wallet {address} as '{nickname}'")
-        
+
         await self._notify({
             "type": "wallet_tracked",
             "wallet": wallet.to_dict()
         })
-        
+
         return wallet
-        
+
     async def untrack_wallet(self, address: str) -> bool:
         if address not in self._tracked_wallets:
             return False
-        
+
         wallet = self._tracked_wallets.pop(address)
         if address in self._copy_configs:
             del self._copy_configs[address]
         if self._monitor:
             await self._monitor.remove_wallet(address)
-        
+
         logger.info(f"Stopped tracking wallet {address} ('{wallet.nickname}')")
         return True
-        
+
     def get_tracked_wallets(self, user_id: Optional[str] = None) -> List[TrackedWallet]:
         wallets = list(self._tracked_wallets.values())
         if user_id:
             wallets = [w for w in wallets if w.user_id == user_id]
         return wallets
-        
+
     def get_wallet_performance(self, address: str) -> Optional[PerformanceStats]:
         wallet = self._tracked_wallets.get(address)
         if wallet:
@@ -546,22 +546,22 @@ class CopyTradingEngine:
     async def set_copy_config(self, config: CopyConfig) -> CopyConfig:
         if config.source_wallet not in self._tracked_wallets:
             raise ValueError(f"Wallet {config.source_wallet} is not being tracked")
-        
+
         self._copy_configs[config.source_wallet] = config
         self._tracked_wallets[config.source_wallet].copy_enabled = True
         logger.info(f"Copy config set for wallet {config.source_wallet}")
         return config
-        
+
     def get_copy_config(self, source_wallet: str) -> Optional[CopyConfig]:
         return self._copy_configs.get(source_wallet)
-        
+
     async def disable_copying(self, source_wallet: str) -> bool:
         if source_wallet in self._copy_configs:
             self._copy_configs[source_wallet].is_active = False
         if source_wallet in self._tracked_wallets:
             self._tracked_wallets[source_wallet].copy_enabled = False
         return True
-        
+
     async def enable_copying(self, source_wallet: str) -> bool:
         if source_wallet not in self._copy_configs:
             return False
@@ -569,28 +569,28 @@ class CopyTradingEngine:
         if source_wallet in self._tracked_wallets:
             self._tracked_wallets[source_wallet].copy_enabled = True
         return True
-        
+
     async def _on_trade_detected(self, trade: DetectedTrade):
         logger.info(f"Trade detected: {trade.trade_type.value} {trade.amount_sol} SOL "
                    f"from wallet {trade.wallet[:8]}...")
-        
+
         if trade.wallet in self._tracked_wallets:
             wallet = self._tracked_wallets[trade.wallet]
             wallet.performance_stats.tokens_traded.add(trade.token_mint)
             wallet.performance_stats.last_trade_time = trade.timestamp
-        
+
         await self._notify({
             "type": "trade_detected",
             "trade": trade.to_dict(),
             "wallet_nickname": self._tracked_wallets.get(trade.wallet, TrackedWallet("", "", "")).nickname
         })
-        
+
         config = self._copy_configs.get(trade.wallet)
         if not config:
             return
-        
+
         should_copy, reason = config.should_copy(trade.trade_type, trade.token_mint, trade.amount_sol)
-        
+
         if not should_copy:
             logger.debug(f"Not copying trade: {reason}")
             await self._notify({
@@ -599,24 +599,24 @@ class CopyTradingEngine:
                 "reason": reason
             })
             return
-        
+
         asyncio.create_task(self._execute_delayed_copy(trade, config))
-        
+
     async def _execute_delayed_copy(self, trade: DetectedTrade, config: CopyConfig):
         if config.delay_seconds > 0:
             logger.debug(f"Waiting {config.delay_seconds}s before copying...")
             await asyncio.sleep(config.delay_seconds)
-        
+
         result = await self.execute_copy(trade, config)
         self._copy_history.append(result)
-        
+
         self._stats["total_copies"] += 1
         if result.status == CopyStatus.SUCCESS:
             self._stats["successful_copies"] += 1
             self._stats["total_volume"] += result.copy_amount
         else:
             self._stats["failed_copies"] += 1
-        
+
         if trade.wallet in self._tracked_wallets:
             wallet = self._tracked_wallets[trade.wallet]
             wallet.total_copies_made += 1
@@ -628,11 +628,11 @@ class CopyTradingEngine:
 
     async def execute_copy(self, trade: DetectedTrade, config: CopyConfig) -> CopyResult:
         start_time = datetime.utcnow()
-        
+
         try:
             async with self._copy_semaphore:
                 copy_amount = config.calculate_copy_amount(trade.amount_sol)
-                
+
                 if config.require_safety_check and self.safety_checker:
                     try:
                         is_safe = await self._check_token_safety(trade.token_mint)
@@ -645,7 +645,7 @@ class CopyTradingEngine:
                             )
                     except Exception as e:
                         logger.warning(f"Safety check failed: {e}")
-                
+
                 quote = await self._get_jupiter_quote(trade, copy_amount, config)
                 if not quote:
                     return CopyResult(
@@ -654,16 +654,16 @@ class CopyTradingEngine:
                         status=CopyStatus.FAILED,
                         error_message="Failed to get Jupiter quote"
                     )
-                
+
                 tx_signature = await self._execute_jupiter_swap(quote, config)
-                
+
                 end_time = datetime.utcnow()
                 execution_time = int((end_time - start_time).total_seconds() * 1000)
-                
+
                 if tx_signature:
                     config.copies_today += 1
                     config.last_copy_date = datetime.utcnow()
-                    
+
                     result = CopyResult(
                         original_trade=trade,
                         copy_config=config,
@@ -673,12 +673,12 @@ class CopyTradingEngine:
                         executed_at=end_time,
                         execution_time_ms=execution_time
                     )
-                    
+
                     await self._notify({
                         "type": "copy_executed",
                         "result": result.to_dict()
                     })
-                    
+
                     return result
                 else:
                     return CopyResult(
@@ -688,7 +688,7 @@ class CopyTradingEngine:
                         error_message="Swap execution failed",
                         execution_time_ms=execution_time
                     )
-                    
+
         except Exception as e:
             logger.error(f"Error executing copy: {e}")
             return CopyResult(
@@ -697,7 +697,7 @@ class CopyTradingEngine:
                 status=CopyStatus.FAILED,
                 error_message=str(e)
             )
-            
+
     async def _check_token_safety(self, token_mint: str) -> bool:
         if not self.safety_checker:
             return True
@@ -707,7 +707,7 @@ class CopyTradingEngine:
         except Exception as e:
             logger.warning(f"Safety check error: {e}")
             return True
-            
+
     async def _get_jupiter_quote(
         self,
         trade: DetectedTrade,
@@ -716,21 +716,21 @@ class CopyTradingEngine:
     ) -> Optional[Dict]:
         try:
             amount_lamports = int(amount * Decimal("1e9"))
-            
+
             if trade.trade_type == TradeType.BUY:
                 input_mint = "So11111111111111111111111111111111111111112"
                 output_mint = trade.token_mint
             else:
                 input_mint = trade.token_mint
                 output_mint = "So11111111111111111111111111111111111111112"
-            
+
             params = {
                 "inputMint": input_mint,
                 "outputMint": output_mint,
                 "amount": amount_lamports,
                 "slippageBps": config.slippage_bps
             }
-            
+
             async with aiohttp.ClientSession() as session:
                 async with session.get(
                     f"{self.jupiter_api_url}/quote",
@@ -742,11 +742,11 @@ class CopyTradingEngine:
                     else:
                         logger.error(f"Jupiter quote error: {response.status}")
                         return None
-                        
+
         except Exception as e:
             logger.error(f"Error getting Jupiter quote: {e}")
             return None
-            
+
     async def _execute_jupiter_swap(self, quote: Dict, config: CopyConfig) -> Optional[str]:
         logger.info("Would execute Jupiter swap (requires wallet signing)")
         return None
@@ -758,7 +758,7 @@ class CopyTradingEngine:
         sort_by: str = "pnl"
     ) -> List[Dict[str, Any]]:
         wallets = list(self._tracked_wallets.values())
-        
+
         if period != "all":
             now = datetime.utcnow()
             if period == "24h":
@@ -769,11 +769,11 @@ class CopyTradingEngine:
                 cutoff = now - timedelta(days=30)
             else:
                 cutoff = datetime.min
-                
-            wallets = [w for w in wallets 
-                      if w.performance_stats.last_trade_time and 
+
+            wallets = [w for w in wallets
+                      if w.performance_stats.last_trade_time and
                       w.performance_stats.last_trade_time >= cutoff]
-        
+
         if sort_by == "pnl":
             wallets.sort(key=lambda w: w.performance_stats.total_pnl_sol, reverse=True)
         elif sort_by == "win_rate":
@@ -782,7 +782,7 @@ class CopyTradingEngine:
             wallets.sort(key=lambda w: w.performance_stats.total_volume_sol, reverse=True)
         elif sort_by == "trades":
             wallets.sort(key=lambda w: w.performance_stats.total_trades, reverse=True)
-        
+
         result = []
         for rank, wallet in enumerate(wallets[:count], 1):
             result.append({
@@ -796,17 +796,17 @@ class CopyTradingEngine:
                 "best_trade": str(wallet.performance_stats.best_trade_pnl),
                 "copy_enabled": wallet.copy_enabled
             })
-        
+
         return result
-        
+
     def get_wallet_rank(self, address: str, sort_by: str = "pnl") -> Optional[Dict[str, Any]]:
         wallets = list(self._tracked_wallets.values())
-        
+
         if sort_by == "pnl":
             wallets.sort(key=lambda w: w.performance_stats.total_pnl_sol, reverse=True)
         elif sort_by == "win_rate":
             wallets.sort(key=lambda w: w.performance_stats.win_rate, reverse=True)
-        
+
         for rank, wallet in enumerate(wallets, 1):
             if wallet.address == address:
                 return {
@@ -815,15 +815,15 @@ class CopyTradingEngine:
                     "percentile": ((len(wallets) - rank) / len(wallets)) * 100 if wallets else 0,
                     "wallet": wallet.to_dict()
                 }
-        
+
         return None
-        
+
     def get_copy_performance(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         history = self._copy_history
-        
+
         if user_id:
             history = [h for h in history if h.copy_config.user_id == user_id]
-        
+
         if not history:
             return {
                 "total_copies": 0,
@@ -831,16 +831,16 @@ class CopyTradingEngine:
                 "total_volume": "0",
                 "average_execution_time_ms": 0
             }
-        
+
         successful = [h for h in history if h.status == CopyStatus.SUCCESS]
         failed = [h for h in history if h.status == CopyStatus.FAILED]
-        
+
         total_volume = sum(h.copy_amount for h in successful)
         avg_execution_time = (
             sum(h.execution_time_ms or 0 for h in history) / len(history)
             if history else 0
         )
-        
+
         return {
             "total_copies": len(history),
             "successful_copies": len(successful),
@@ -852,25 +852,25 @@ class CopyTradingEngine:
             "average_execution_time_ms": avg_execution_time,
             "copies_by_wallet": self._get_copies_by_wallet(history)
         }
-        
+
     def _get_copies_by_wallet(self, history: List[CopyResult]) -> Dict[str, int]:
         by_wallet: Dict[str, int] = {}
         for result in history:
             wallet = result.original_trade.wallet
             by_wallet[wallet] = by_wallet.get(wallet, 0) + 1
         return by_wallet
-        
+
     def get_slippage_analysis(self, user_id: Optional[str] = None) -> Dict[str, Any]:
         history = [h for h in self._copy_history if h.slippage_actual is not None]
-        
+
         if user_id:
             history = [h for h in history if h.copy_config.user_id == user_id]
-        
+
         if not history:
             return {"average_slippage": 0, "max_slippage": 0, "min_slippage": 0}
-        
+
         slippages = [h.slippage_actual for h in history if h.slippage_actual is not None]
-        
+
         return {
             "average_slippage": sum(slippages) / len(slippages),
             "max_slippage": max(slippages),
@@ -881,16 +881,16 @@ class CopyTradingEngine:
     def add_to_blacklist(self, address: str):
         self._scam_blacklist.add(address)
         logger.info(f"Added {address} to scam blacklist")
-        
+
     def remove_from_blacklist(self, address: str):
         self._scam_blacklist.discard(address)
-        
+
     def is_blacklisted(self, address: str) -> bool:
         return address in self._scam_blacklist
-        
+
     def get_blacklist(self) -> List[str]:
         return list(self._scam_blacklist)
-        
+
     async def _notify(self, notification: Dict[str, Any]):
         if self.notification_callback:
             try:
@@ -900,7 +900,7 @@ class CopyTradingEngine:
                     self.notification_callback(notification)
             except Exception as e:
                 logger.error(f"Notification error: {e}")
-                
+
     def get_stats(self) -> Dict[str, Any]:
         return {
             "tracked_wallets": len(self._tracked_wallets),
@@ -915,11 +915,11 @@ class CopyTradingEngine:
             "total_volume_sol": str(self._stats["total_volume"]),
             "blacklisted_wallets": len(self._scam_blacklist)
         }
-        
+
     def export_data(self) -> Dict[str, Any]:
         return {
             "tracked_wallets": {
-                addr: wallet.to_dict() 
+                addr: wallet.to_dict()
                 for addr, wallet in self._tracked_wallets.items()
             },
             "copy_configs": {
@@ -935,7 +935,7 @@ class CopyTradingEngine:
                 "total_pnl": str(self._stats["total_pnl"])
             }
         }
-        
+
     def import_data(self, data: Dict[str, Any]):
         self._scam_blacklist = set(data.get("blacklist", []))
         if "stats" in data:
@@ -961,14 +961,14 @@ def create_copy_trading_engine(
 if __name__ == "__main__":
     async def example():
         engine = CopyTradingEngine(helius_api_key="your-api-key")
-        
+
         wallet = await engine.track_wallet(
             address="SomeWalletAddressHere123456789",
             nickname="Top Trader",
             user_id="user123",
             tags=["whale", "consistent"]
         )
-        
+
         config = CopyConfig(
             source_wallet=wallet.address,
             user_id="user123",
@@ -978,12 +978,12 @@ if __name__ == "__main__":
             delay_seconds=3.0,
             require_safety_check=True
         )
-        
+
         await engine.set_copy_config(config)
         await engine.start()
-        
+
         leaderboard = engine.get_leaderboard(period="7d", count=10)
         print("Top 10 Traders (7 days):", leaderboard)
-        
+
         stats = engine.get_stats()
         print("Copy Trading Stats:", stats)
