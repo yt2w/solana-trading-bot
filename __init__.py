@@ -1,14 +1,7 @@
-"""
-Solana Trading Bot - Core Trading Package
-==========================================
-
-Production-ready trading infrastructure for Solana.
-"""
 
 __version__ = "1.0.0"
 __author__ = "Trading Bot Team"
 
-# Import all modules for easy access
 from . import exceptions
 from . import validators
 from . import rate_limiter
