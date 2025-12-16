@@ -19,14 +19,14 @@ import statistics
 logger = logging.getLogger(__name__)
 
 
-# ============== Enums ==============
+                                     
 
 class CostBasisMethod(Enum):
     """Cost basis calculation methods"""
-    FIFO = "fifo"          # First In, First Out
-    LIFO = "lifo"          # Last In, First Out
-    AVERAGE = "average"    # Average cost basis
-    HIFO = "hifo"          # Highest In, First Out (tax optimization)
+    FIFO = "fifo"                               
+    LIFO = "lifo"                              
+    AVERAGE = "average"                        
+    HIFO = "hifo"                                                    
 
 
 class TimePeriod(Enum):
@@ -62,7 +62,7 @@ class AggregationLevel(Enum):
     MONTHLY = "monthly"
 
 
-# ============== Data Classes ==============
+                                            
 
 @dataclass
 class TokenHolding:
@@ -326,14 +326,14 @@ class Alert:
 
 
 
-# ============== Cost Basis Tracker ==============
+                                                  
 
 class CostBasisTracker:
     """Tracks cost basis using various methods (FIFO, LIFO, Average, HIFO)"""
     
     def __init__(self, method: CostBasisMethod = CostBasisMethod.FIFO):
         self.method = method
-        # Lots: list of (quantity, cost_per_unit, timestamp)
+                                                            
         self.lots: List[Tuple[Decimal, Decimal, datetime]] = []
         self.total_cost = Decimal("0")
         self.total_quantity = Decimal("0")
@@ -344,12 +344,12 @@ class CostBasisTracker:
         self.total_cost += quantity * cost_per_unit
         self.total_quantity += quantity
         
-        # Sort based on method
+                              
         if self.method == CostBasisMethod.LIFO:
             self.lots.sort(key=lambda x: x[2], reverse=True)
         elif self.method == CostBasisMethod.HIFO:
             self.lots.sort(key=lambda x: x[1], reverse=True)
-        else:  # FIFO or AVERAGE
+        else:                   
             self.lots.sort(key=lambda x: x[2])
     
     def calculate_sale_cost_basis(self, quantity: Decimal) -> Tuple[Decimal, Decimal]:
@@ -360,12 +360,12 @@ class CostBasisTracker:
         if self.method == CostBasisMethod.AVERAGE:
             avg_cost = self.total_cost / self.total_quantity if self.total_quantity > 0 else Decimal("0")
             cost_basis = quantity * avg_cost
-            # Update totals
+                           
             self.total_quantity -= quantity
             self.total_cost -= cost_basis
             return cost_basis, avg_cost
         
-        # FIFO, LIFO, HIFO - use lot matching
+                                             
         remaining = quantity
         cost_basis = Decimal("0")
         new_lots = []
@@ -376,13 +376,13 @@ class CostBasisTracker:
                 continue
                 
             if lot_qty <= remaining:
-                # Use entire lot
+                                
                 cost_basis += lot_qty * lot_cost
                 remaining -= lot_qty
                 self.total_quantity -= lot_qty
                 self.total_cost -= lot_qty * lot_cost
             else:
-                # Use partial lot
+                                 
                 cost_basis += remaining * lot_cost
                 new_lot_qty = lot_qty - remaining
                 new_lots.append((new_lot_qty, lot_cost, lot_time))
@@ -410,7 +410,7 @@ class CostBasisTracker:
         return self.total_quantity
 
 
-# ============== User Analytics State ==============
+                                                    
 
 class UserAnalytics:
     """Per-user analytics state and tracking"""
@@ -419,37 +419,37 @@ class UserAnalytics:
         self.user_id = user_id
         self.cost_basis_method = CostBasisMethod.FIFO
         
-        # Cost basis trackers per token
+                                       
         self.token_trackers: Dict[str, CostBasisTracker] = {}
         
-        # Historical snapshots (raw, hourly)
+                                            
         self.snapshots: List[PortfolioSnapshot] = []
         self.daily_snapshots: List[PortfolioSnapshot] = []
         self.weekly_snapshots: List[PortfolioSnapshot] = []
         
-        # Trade history for analytics
+                                     
         self.trades: List[Dict[str, Any]] = []
         
-        # Realized P&L records
+                              
         self.realized_pnl_records: List[Dict[str, Any]] = []
         
-        # Fee records
+                     
         self.fee_records: List[Dict[str, Any]] = []
         
-        # Running totals
+                        
         self.total_realized_pnl = Decimal("0")
         self.total_fees_paid = Decimal("0")
         self.total_volume = Decimal("0")
         
-        # Starting balance for ROI calculation
+                                              
         self.initial_balance: Optional[Decimal] = None
         self.initial_balance_time: Optional[datetime] = None
         
-        # Peak value for drawdown calculation
+                                             
         self.peak_value = Decimal("0")
         self.peak_time: Optional[datetime] = None
         
-        # Last update timestamp
+                               
         self.last_update = datetime.utcnow()
     
     def get_or_create_tracker(self, token_address: str) -> CostBasisTracker:
@@ -466,7 +466,7 @@ class UserAnalytics:
 
 
 
-# ============== Analytics Engine ==============
+                                                
 
 class AnalyticsEngine:
     """
@@ -485,31 +485,31 @@ class AnalyticsEngine:
         self.db = database
         self.price_fetcher = price_fetcher
         
-        # Per-user analytics state
+                                  
         self.user_analytics: Dict[int, UserAnalytics] = {}
         
-        # SOL/USD price cache
-        self.sol_price_usd = Decimal("150")  # Default, updated regularly
+                             
+        self.sol_price_usd = Decimal("150")                              
         
-        # Snapshot configuration
+                                
         self.snapshot_interval = timedelta(hours=1)
-        self.daily_snapshot_hour = 0  # UTC midnight
+        self.daily_snapshot_hour = 0                
         
-        # Data retention policy
+                               
         self.raw_retention_days = 30
         self.hourly_retention_days = 90
         self.daily_retention_days = 365
         
-        # Alert callbacks
+                         
         self.alert_callbacks: List[Callable[[int, Alert], None]] = []
         
-        # Background tasks
+                          
         self._running = False
         self._tasks: List[asyncio.Task] = []
         
         logger.info("Analytics engine initialized")
     
-    # ============== Lifecycle ==============
+                                             
     
     async def start(self):
         """Start analytics engine background tasks"""
@@ -541,12 +541,12 @@ class AnalyticsEngine:
         ua.set_cost_basis_method(method)
         logger.info(f"User {user_id} cost basis method set to {method.value}")
     
-    # ============== Trade Recording ==============
+                                                   
     
     async def record_trade(
         self,
         user_id: int,
-        trade_type: str,          # "buy" or "sell"
+        trade_type: str,                           
         token_address: str,
         token_symbol: str,
         amount: Decimal,
@@ -578,18 +578,18 @@ class AnalyticsEngine:
         tracker = ua.get_or_create_tracker(token_address)
         
         if trade_type == "buy":
-            # Add to cost basis
+                               
             tracker.add_purchase(amount, price_sol, timestamp)
             
         elif trade_type == "sell":
-            # Calculate realized P&L
+                                    
             cost_basis, avg_cost = tracker.calculate_sale_cost_basis(amount)
             realized_pnl = total_sol - cost_basis
             
             result["realized_pnl"] = str(realized_pnl)
             result["cost_basis"] = str(cost_basis)
             
-            # Record realized P&L
+                                 
             ua.realized_pnl_records.append({
                 "timestamp": timestamp,
                 "token_address": token_address,
@@ -601,7 +601,7 @@ class AnalyticsEngine:
             })
             ua.total_realized_pnl += realized_pnl
         
-        # Record fees
+                     
         total_fees = sum(fees.values())
         ua.fee_records.append({
             "timestamp": timestamp,
@@ -613,7 +613,7 @@ class AnalyticsEngine:
         })
         ua.total_fees_paid += total_fees
         
-        # Record trade for analytics
+                                    
         trade_record = {
             "timestamp": timestamp,
             "trade_type": trade_type,
@@ -629,7 +629,7 @@ class AnalyticsEngine:
         ua.total_volume += total_sol
         ua.last_update = timestamp
         
-        # Initialize balance tracking if needed
+                                               
         if ua.initial_balance is None:
             await self._initialize_user_balance(user_id)
         
@@ -650,7 +650,7 @@ class AnalyticsEngine:
                 logger.error(f"Failed to initialize balance for user {user_id}: {e}")
 
 
-    # ============== Portfolio Tracking ==============
+                                                      
     
     async def get_portfolio(self, user_id: int) -> PortfolioSnapshot:
         """Get current portfolio state"""
@@ -661,7 +661,7 @@ class AnalyticsEngine:
         total_token_value_sol = Decimal("0")
         total_unrealized_pnl = Decimal("0")
         
-        # Get positions from database or trackers
+                                                 
         positions = []
         if self.db:
             try:
@@ -669,7 +669,7 @@ class AnalyticsEngine:
             except Exception:
                 pass
         
-        # If no DB positions, use tracker data
+                                              
         if not positions:
             for token_addr, tracker in ua.token_trackers.items():
                 if tracker.get_quantity() > 0:
@@ -689,7 +689,7 @@ class AnalyticsEngine:
             if balance <= 0:
                 continue
             
-            # Get current price
+                               
             current_price = Decimal("0")
             if self.price_fetcher:
                 try:
@@ -698,11 +698,11 @@ class AnalyticsEngine:
                 except Exception:
                     pass
             
-            # Get cost basis from tracker
+                                         
             tracker = ua.token_trackers.get(token_address)
             avg_cost = tracker.get_average_cost() if tracker else Decimal("0")
             
-            # Calculate values
+                              
             value_sol = balance * current_price
             value_usd = value_sol * self.sol_price_usd
             cost_value = balance * avg_cost
@@ -726,7 +726,7 @@ class AnalyticsEngine:
             total_token_value_sol += value_sol
             total_unrealized_pnl += unrealized_pnl
         
-        # Get SOL balance
+                         
         sol_balance = Decimal("0")
         if self.db:
             try:
@@ -751,7 +751,7 @@ class AnalyticsEngine:
             num_positions=len(holdings)
         )
         
-        # Update peak value for drawdown calculation
+                                                    
         if total_value_sol > ua.peak_value:
             ua.peak_value = total_value_sol
             ua.peak_time = now
@@ -769,7 +769,7 @@ class AnalyticsEngine:
         delta = period.to_timedelta()
         cutoff = datetime.utcnow() - delta if delta else datetime.min
         
-        # Select appropriate snapshot list based on period
+                                                          
         if period in [TimePeriod.HOUR, TimePeriod.DAY]:
             snapshots = ua.snapshots
         elif period in [TimePeriod.WEEK, TimePeriod.MONTH]:
@@ -777,13 +777,13 @@ class AnalyticsEngine:
         else:
             snapshots = ua.weekly_snapshots if ua.weekly_snapshots else ua.daily_snapshots
         
-        # Filter by time
+                        
         filtered = [s for s in snapshots if s.timestamp >= cutoff]
         
         return filtered
 
 
-    # ============== P&L Calculations ==============
+                                                    
     
     async def calculate_pnl(
         self,
@@ -796,30 +796,30 @@ class AnalyticsEngine:
         delta = period.to_timedelta()
         start_time = now - delta if delta else (ua.initial_balance_time or now)
         
-        # Get current portfolio
+                               
         current_portfolio = await self.get_portfolio(user_id)
         
-        # Get starting balance from snapshots or initial
+                                                        
         starting_balance = ua.initial_balance or Decimal("0")
         historical = await self.get_portfolio_history(user_id, period)
         if historical:
             starting_balance = historical[0].total_value_sol
         
-        # Calculate realized P&L in period
+                                          
         realized_in_period = sum(
             r["realized_pnl"]
             for r in ua.realized_pnl_records
             if r["timestamp"] >= start_time
         )
         
-        # Calculate fees in period
+                                  
         fees_in_period = sum(
             f["total_fee"]
             for f in ua.fee_records
             if f["timestamp"] >= start_time
         )
         
-        # Deposits/withdrawals (placeholder - would need tracking)
+                                                                  
         deposits = Decimal("0")
         withdrawals = Decimal("0")
         
@@ -857,7 +857,7 @@ class AnalyticsEngine:
         ua = self.get_user_analytics(user_id)
         token_pnls = []
         
-        # Aggregate trades by token
+                                   
         token_data: Dict[str, Dict] = defaultdict(lambda: {
             "buys": [], "sells": [], "symbol": "UNKNOWN"
         })
@@ -881,7 +881,7 @@ class AnalyticsEngine:
             
             remaining_balance = total_bought - total_sold
             
-            # Get current price for remaining balance
+                                                     
             current_price = Decimal("0")
             if remaining_balance > 0 and self.price_fetcher:
                 try:
@@ -892,15 +892,15 @@ class AnalyticsEngine:
             
             remaining_value = remaining_balance * current_price
             
-            # Calculate P&L
+                           
             avg_buy_price = total_buy_value / total_bought if total_bought > 0 else Decimal("0")
             avg_sell_price = total_sell_value / total_sold if total_sold > 0 else Decimal("0")
             
-            # Realized P&L from sales
+                                     
             realized_cost = total_sold * avg_buy_price if total_bought > 0 else Decimal("0")
             realized_pnl = total_sell_value - realized_cost
             
-            # Unrealized P&L on remaining
+                                         
             unrealized_cost = remaining_balance * avg_buy_price
             unrealized_pnl = remaining_value - unrealized_cost
             
@@ -932,13 +932,13 @@ class AnalyticsEngine:
                 last_trade=last_trade
             ))
         
-        # Sort by total P&L descending
+                                      
         token_pnls.sort(key=lambda x: x.total_pnl, reverse=True)
         
         return token_pnls
 
 
-    # ============== Trade Analytics ==============
+                                                   
     
     async def get_trade_stats(
         self,
@@ -951,13 +951,13 @@ class AnalyticsEngine:
         delta = period.to_timedelta()
         cutoff = now - delta if delta else datetime.min
         
-        # Filter trades in period
+                                 
         trades = [t for t in ua.trades if t["timestamp"] >= cutoff]
         
         if not trades:
             return self._empty_trade_stats()
         
-        # Group trades into completed round trips
+                                                 
         completed_trades = []
         token_buys: Dict[str, List] = defaultdict(list)
         
@@ -987,7 +987,7 @@ class AnalyticsEngine:
         if not completed_trades:
             return self._empty_trade_stats()
         
-        # Calculate statistics
+                              
         wins = [t for t in completed_trades if t["pnl"] > 0]
         losses = [t for t in completed_trades if t["pnl"] < 0]
         breakeven = [t for t in completed_trades if t["pnl"] == 0]
@@ -1003,7 +1003,7 @@ class AnalyticsEngine:
         hold_times = [t["hold_time"] for t in completed_trades]
         avg_hold = sum(hold_times, timedelta()) / len(hold_times)
         
-        # Per-token P&L
+                       
         token_pnl: Dict[str, Decimal] = defaultdict(Decimal)
         for t in completed_trades:
             token_pnl[t["token_symbol"]] += t["pnl"]
@@ -1048,7 +1048,7 @@ class AnalyticsEngine:
             total_volume_sol=Decimal("0"), average_trade_size=Decimal("0")
         )
     
-    # ============== Fee Analysis ==============
+                                                
     
     async def get_fee_analysis(
         self,
@@ -1077,7 +1077,7 @@ class AnalyticsEngine:
         network_fees = sum(f["network_fee"] for f in fees)
         priority_fees = sum(f["priority_fee"] for f in fees)
         total_fees = sum(f["total_fee"] for f in fees)
-        slippage = Decimal("0")  # Would need expected vs actual price
+        slippage = Decimal("0")                                       
         
         trades = [t for t in ua.trades if t["timestamp"] >= cutoff]
         volume = sum(t["total_sol"] for t in trades)
@@ -1101,7 +1101,7 @@ class AnalyticsEngine:
         )
 
 
-    # ============== Performance Metrics ==============
+                                                       
     
     async def get_performance_metrics(
         self,
@@ -1121,11 +1121,11 @@ class AnalyticsEngine:
         initial_value = ua.initial_balance or history[0].total_value_sol
         current_value = current.total_value_sol
         
-        # Basic ROI
+                   
         roi_sol = current_value - initial_value
         roi_percent = (roi_sol / initial_value * 100) if initial_value > 0 else Decimal("0")
         
-        # Calculate daily returns for advanced metrics
+                                                      
         daily_returns = []
         for i in range(1, len(history)):
             prev_val = history[i-1].total_value_sol
@@ -1134,7 +1134,7 @@ class AnalyticsEngine:
                 daily_return = float((curr_val - prev_val) / prev_val)
                 daily_returns.append(daily_return)
         
-        # CAGR (Compound Annual Growth Rate)
+                                            
         cagr = None
         if ua.initial_balance_time:
             days_elapsed = (now - ua.initial_balance_time).days
@@ -1145,7 +1145,7 @@ class AnalyticsEngine:
                     if ratio > 0:
                         cagr = Decimal(str((ratio ** (1/float(years)) - 1) * 100))
         
-        # Volatility, Sharpe, Sortino ratios
+                                            
         sharpe = None
         sortino = None
         volatility = None
@@ -1156,11 +1156,11 @@ class AnalyticsEngine:
                 volatility = Decimal(str(vol * 100))
                 avg_return = statistics.mean(daily_returns)
                 
-                # Sharpe ratio (assuming 0% risk-free rate)
+                                                           
                 if vol > 0:
                     sharpe = Decimal(str((avg_return / vol) * (252 ** 0.5)))
                 
-                # Sortino ratio (downside deviation)
+                                                    
                 negative_returns = [r for r in daily_returns if r < 0]
                 if negative_returns:
                     downside_dev = statistics.stdev(negative_returns)
@@ -1169,7 +1169,7 @@ class AnalyticsEngine:
             except Exception:
                 pass
         
-        # Drawdown calculations
+                               
         peak = initial_value
         max_drawdown_sol = Decimal("0")
         max_drawdown_percent = Decimal("0")
@@ -1187,7 +1187,7 @@ class AnalyticsEngine:
         
         current_dd = (ua.peak_value - current_value) / ua.peak_value * 100 if ua.peak_value > 0 else Decimal("0")
         
-        # Recovery factor and Calmar ratio
+                                          
         recovery_factor = None
         calmar = None
         if max_drawdown_sol > 0:
@@ -1195,7 +1195,7 @@ class AnalyticsEngine:
             if cagr and max_drawdown_percent > 0:
                 calmar = cagr / max_drawdown_percent
         
-        # Daily stats
+                     
         profitable_days = sum(1 for r in daily_returns if r > 0)
         unprofitable_days = sum(1 for r in daily_returns if r < 0)
         avg_daily = Decimal(str(statistics.mean(daily_returns) * 100)) if daily_returns else Decimal("0")
@@ -1223,7 +1223,7 @@ class AnalyticsEngine:
         )
 
 
-    # ============== Charts Data ==============
+                                               
     
     async def get_equity_curve(
         self,
@@ -1264,7 +1264,7 @@ class AnalyticsEngine:
         portfolio = await self.get_portfolio(user_id)
         allocations = []
         
-        # Add SOL
+                 
         if portfolio.sol_balance > 0:
             sol_pct = (portfolio.sol_balance / portfolio.total_value_sol * 100) if portfolio.total_value_sol > 0 else Decimal("0")
             allocations.append({
@@ -1273,7 +1273,7 @@ class AnalyticsEngine:
                 "percent": str(sol_pct)
             })
         
-        # Add token holdings
+                            
         for holding in portfolio.token_holdings:
             pct = (holding.value_sol / portfolio.total_value_sol * 100) if portfolio.total_value_sol > 0 else Decimal("0")
             allocations.append({
@@ -1301,7 +1301,7 @@ class AnalyticsEngine:
         if not pnls:
             return {"bins": [], "counts": [], "avg_pnl_percent": 0, "median_pnl_percent": 0}
         
-        # Create histogram bins
+                               
         min_pnl = min(pnls)
         max_pnl = max(pnls)
         num_bins = 20
@@ -1324,7 +1324,7 @@ class AnalyticsEngine:
         }
 
 
-    # ============== Export Functions ==============
+                                                    
     
     async def export_trades_csv(
         self,
@@ -1376,7 +1376,7 @@ class AnalyticsEngine:
             "Unrealized P&L (SOL)", "Unrealized P&L (%)"
         ])
         
-        # SOL balance
+                     
         writer.writerow([
             "SOL", "Native", str(portfolio.sol_balance),
             "1.0", "1.0",
@@ -1540,7 +1540,7 @@ class AnalyticsEngine:
         return output.getvalue()
 
 
-    # ============== Alerts ==============
+                                          
     
     def register_alert_callback(self, callback: Callable[[int, Alert], None]):
         """Register callback for alerts"""
@@ -1639,7 +1639,7 @@ Best Token: {stats.best_token or 'N/A'}
         portfolio = await self.get_portfolio(user_id)
         metrics = await self.get_performance_metrics(user_id, TimePeriod.DAY)
         
-        # Drawdown alert
+                        
         if metrics.current_drawdown_percent >= 10:
             alerts.append(Alert(
                 alert_type="drawdown_warning",
@@ -1650,14 +1650,14 @@ Best Token: {stats.best_token or 'N/A'}
                 data={"drawdown_percent": str(metrics.current_drawdown_percent)}
             ))
         
-        # High performer alert
+                              
         high_perf = await self.check_high_performer_alert(user_id)
         if high_perf:
             alerts.append(high_perf)
         
         return alerts
     
-    # ============== Background Tasks ==============
+                                                    
     
     async def _snapshot_loop(self):
         """Take regular portfolio snapshots"""
@@ -1668,7 +1668,7 @@ Best Token: {stats.best_token or 'N/A'}
                     snapshot = await self.get_portfolio(user_id)
                     ua.snapshots.append(snapshot)
                     
-                    # Trim old raw snapshots
+                                            
                     cutoff = datetime.utcnow() - timedelta(days=self.raw_retention_days)
                     ua.snapshots = [s for s in ua.snapshots if s.timestamp >= cutoff]
                     
@@ -1685,31 +1685,31 @@ Best Token: {stats.best_token or 'N/A'}
             try:
                 now = datetime.utcnow()
                 
-                # Daily aggregation at midnight UTC
+                                                   
                 if now.hour == 0:
                     for user_id in list(self.user_analytics.keys()):
                         ua = self.user_analytics[user_id]
                         snapshot = await self.get_portfolio(user_id)
                         ua.daily_snapshots.append(snapshot)
                         
-                        # Trim old daily snapshots
+                                                  
                         cutoff = now - timedelta(days=self.daily_retention_days)
                         ua.daily_snapshots = [s for s in ua.daily_snapshots if s.timestamp >= cutoff]
                         
-                        # Weekly on Sunday
+                                          
                         if now.weekday() == 6:
                             ua.weekly_snapshots.append(snapshot)
                         
-                        # Send daily summary
+                                            
                         alert = await self.generate_daily_summary(user_id)
                         await self._send_alert(user_id, alert)
                         
-                        # Weekly report on Sunday
+                                                 
                         if now.weekday() == 6:
                             weekly = await self.generate_weekly_report(user_id)
                             await self._send_alert(user_id, weekly)
                 
-                await asyncio.sleep(3600)  # Check hourly
+                await asyncio.sleep(3600)                
             except asyncio.CancelledError:
                 break
             except Exception as e:
@@ -1736,7 +1736,7 @@ Best Token: {stats.best_token or 'N/A'}
                 await asyncio.sleep(60)
 
 
-# ============== Factory Function ==============
+                                                
 
 async def create_analytics_engine(database=None, price_fetcher=None) -> AnalyticsEngine:
     """Create and start analytics engine"""
