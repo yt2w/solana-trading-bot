@@ -217,7 +217,7 @@ class DCAScheduler:
 
         try:
             hour, minute = map(int, config.time_of_day.split(':'))
-        except:
+        except Exception:
             hour, minute = 12, 0
 
         if config.frequency == DCAFrequency.HOURLY:
