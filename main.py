@@ -1,93 +1,115 @@
+"""
+Main entry point for the Solana Trading Bot.
+
+SECURITY: This bot requires proper configuration of encryption secrets.
+The bot will NOT start if ENCRYPTION_SECRET and ENCRYPTION_SALT are not set.
+"""
 
 import asyncio
-import signal
-import sys
 import logging
-from logging.handlers import RotatingFileHandler
+import sys
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler
 
-from config import config
-from bot import get_bot
+from .config import config
+from .handlers import TradingBotHandlers
+from .audit import init_audit_logger, AuditAction, AuditResult
 
-def setup_logging():
-    config.logging.ensure_directory()
-    
-    file_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    console_formatter = logging.Formatter(
-        '%(asctime)s - %(levelname)s - %(message)s'
-    )
-    
-    root_logger = logging.getLogger()
-    root_logger.setLevel(getattr(logging, config.logging.level.upper()))
-    
-    file_handler = RotatingFileHandler(
-        config.logging.file_path,
-        maxBytes=config.logging.max_size_mb * 1024 * 1024,
-        backupCount=config.logging.backup_count
-    )
-    file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(file_handler)
-    
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(console_formatter)
-    root_logger.addHandler(console_handler)
-    
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
-    logging.getLogger("telegram").setLevel(logging.WARNING)
-    
-    return logging.getLogger(__name__)
 
-async def main():
-    logger = setup_logging()
+# Configure logging
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+
+async def post_init(application):
+    """Called after application initialization."""
+    logger.info("Bot initialized successfully!")
+
+
+async def post_shutdown(application):
+    """Called after application shutdown."""
+    logger.info("Bot shut down.")
+    # Log shutdown
+    from .audit import get_audit_logger
+    audit = get_audit_logger()
+    audit.log(
+        action=AuditAction.SYSTEM_SHUTDOWN,
+        result=AuditResult.SUCCESS,
+        details={"message": "Bot shutdown complete"}
+    )
+
+
+def main():
+    """Main function to run the bot."""
+    logger.info("=" * 60)
+    logger.info("Solana Trading Bot - Starting")
+    logger.info("=" * 60)
     
-    config.initialize()
+    # SECURITY: Validate ALL configuration including security-critical settings
+    # This will exit immediately if encryption secrets are not configured
+    logger.info("Validating configuration...")
+    config.validate_all_and_exit_on_critical()
     
-    issues = config.validate()
-    for issue in issues:
-        logger.info(issue)
+    # Initialize audit logger
+    logger.info("Initializing audit logging...")
+    audit = init_audit_logger(config.audit_log_path)
     
-    logger.info("=" * 50)
-    logger.info("Solana Trading Bot Starting")
-    logger.info("=" * 50)
-    logger.info(f"Network: {config.solana.network}")
-    logger.info(f"Paper Trading: {config.trading.paper_trading}")
-    logger.info(f"Database: {config.database.path}")
+    # Log startup with security validation success
+    audit.log(
+        action=AuditAction.SYSTEM_STARTUP,
+        result=AuditResult.SUCCESS,
+        details={
+            "message": "Bot starting with validated security configuration",
+            "encryption_configured": True,
+            "audit_log_path": config.audit_log_path
+        }
+    )
     
-    bot = get_bot()
+    logger.info("Starting Solana Trading Bot...")
     
-    loop = asyncio.get_event_loop()
+    # Create application
+    application = (
+        Application.builder()
+        .token(config.telegram_token)
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
+        .build()
+    )
     
-    def signal_handler():
-        logger.info("Shutdown signal received")
-        asyncio.create_task(bot.stop())
-    
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        try:
-            loop.add_signal_handler(sig, signal_handler)
-        except NotImplementedError:
-            pass
-    
+    # Initialize handlers
     try:
-        await bot.start()
-        
-        while bot.is_running:
-            await asyncio.sleep(1)
-            
-    except KeyboardInterrupt:
-        logger.info("Keyboard interrupt received")
+        handlers = TradingBotHandlers()
     except Exception as e:
-        logger.error(f"Fatal error: {e}", exc_info=True)
-    finally:
-        await bot.stop()
-        logger.info("Bot shutdown complete")
+        logger.critical(f"Failed to initialize handlers: {e}")
+        audit.log(
+            action=AuditAction.SYSTEM_ERROR,
+            result=AuditResult.FAILURE,
+            details={"error": str(e), "phase": "handler_init"}
+        )
+        sys.exit(1)
+    
+    # Register all handlers
+    for handler in handlers.get_handlers():
+        application.add_handler(handler)
+    
+    # Add error handler
+    async def error_handler(update, context):
+        logger.error(f"Exception while handling an update: {context.error}")
+        audit.log(
+            action=AuditAction.SYSTEM_ERROR,
+            result=AuditResult.ERROR,
+            details={"error": str(context.error)[:200]}
+        )
+    
+    application.add_error_handler(error_handler)
+    
+    # Run the bot
+    logger.info("Bot is running. Press Ctrl+C to stop.")
+    logger.info("=" * 60)
+    application.run_polling(allowed_updates=["message", "callback_query"])
+
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nShutdown requested...")
-    except Exception as e:
-        print(f"Fatal error: {e}")
-        sys.exit(1)
+    main()
