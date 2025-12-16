@@ -1,41 +1,112 @@
-# SECRETS & CREDENTIALS
+# ===============================================================
+# SOLANA TRADING BOT - GITIGNORE
+# ===============================================================
+
+# -----------------------------------------------------------------
+# SECRETS & CREDENTIALS (CRITICAL)
+# -----------------------------------------------------------------
 .env
 .env.*
 !.env.example
 *.pem
 *.key
+*_secret*
+*_private*
 wallet*.json
 keystore/
 
+# -----------------------------------------------------------------
 # DATABASE & STATE
+# -----------------------------------------------------------------
 *.db
 *.sqlite
+*.sqlite3
 data/
+*.db-journal
+*.db-wal
+*.db-shm
 
-# LOGS
+# -----------------------------------------------------------------
+# LOGS & RUNTIME
+# -----------------------------------------------------------------
 logs/
 *.log
+*.log.*
 audit_logs/
 backups/
 
+# -----------------------------------------------------------------
 # PYTHON
+# -----------------------------------------------------------------
 __pycache__/
 *.py[cod]
+*$py.class
 *.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
 venv/
 .venv/
-*.egg-info/
+ENV/
+env/
 
-# IDE
+# -----------------------------------------------------------------
+# IDE & EDITOR
+# -----------------------------------------------------------------
 .idea/
 .vscode/
 *.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-workspace
+*.sublime-project
 
-# OS
+# -----------------------------------------------------------------
+# OS GENERATED
+# -----------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
 
-# Testing
+# -----------------------------------------------------------------
+# TESTING & COVERAGE
+# -----------------------------------------------------------------
 .coverage
 .pytest_cache/
 htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+*.py,cover
+
+# -----------------------------------------------------------------
+# BUILD & DEPLOY
+# -----------------------------------------------------------------
+*.manifest
+*.spec
+pip-log.txt
+pip-delete-this-directory.txt
