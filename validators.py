@@ -42,22 +42,22 @@ PATH_TRAVERSAL_PATTERNS = ['..', '~', '%2e%2e', '%252e']
 
 @dataclass
 class ValidationResult:
-    
+
     is_valid: bool
     value: Any = None
     error: Optional[str] = None
     field_name: Optional[str] = None
     details: Dict[str, Any] = field(default_factory=dict)
-    
+
     @classmethod
     def success(cls, value: Any, field_name: Optional[str] = None) -> 'ValidationResult':
         return cls(is_valid=True, value=value, field_name=field_name)
-    
+
     @classmethod
     def failure(cls, error: str, field_name: Optional[str] = None,
                 details: Optional[Dict[str, Any]] = None) -> 'ValidationResult':
         return cls(is_valid=False, error=error, field_name=field_name, details=details or {})
-    
+
     def raise_if_invalid(self) -> Any:
         if not self.is_valid:
             raise ValidationError(self.error or "Validation failed",
@@ -66,25 +66,25 @@ class ValidationResult:
 
 @dataclass
 class BatchValidationResult:
-    
+
     results: List[ValidationResult] = field(default_factory=list)
-    
+
     @property
     def is_valid(self) -> bool:
         return all(r.is_valid for r in self.results)
-    
+
     @property
     def errors(self) -> List[str]:
         return [r.error for r in self.results if not r.is_valid and r.error]
-    
+
     @property
     def failed_fields(self) -> List[str]:
         return [r.field_name for r in self.results if not r.is_valid and r.field_name]
-    
+
     def add(self, result: ValidationResult) -> 'BatchValidationResult':
         self.results.append(result)
         return self
-    
+
     def raise_if_invalid(self) -> Dict[str, Any]:
         if not self.is_valid:
             raise ValidationError(
@@ -99,18 +99,18 @@ def validate_solana_address(address: Any, field_name: str = "address") -> str:
             address=str(address)[:50],
             field=field_name
         )
-    
+
     address = address.strip()
-    
+
     if not address:
         raise InvalidAddressError("Address cannot be empty", address="", field=field_name)
-    
+
     if len(address) < 32 or len(address) > 44:
         raise InvalidAddressError(
             f"Invalid address length: {len(address)} characters",
             address=address, field=field_name
         )
-    
+
     try:
         decoded = base58.b58decode(address)
     except Exception as e:
@@ -118,13 +118,13 @@ def validate_solana_address(address: Any, field_name: str = "address") -> str:
             f"Invalid base58 encoding: {str(e)}",
             address=address, field=field_name
         )
-    
+
     if len(decoded) != SOLANA_ADDRESS_LENGTH:
         raise InvalidAddressError(
             f"Decoded address has wrong length: {len(decoded)} bytes (expected {SOLANA_ADDRESS_LENGTH})",
             address=address, field=field_name
         )
-    
+
     try:
         from solders.pubkey import Pubkey
         Pubkey.from_string(address)
@@ -135,7 +135,7 @@ def validate_solana_address(address: Any, field_name: str = "address") -> str:
             f"Cryptographic validation failed: {str(e)}",
             address=address, field=field_name
         )
-    
+
     return address
 
 def validate_token_mint(address: Any, field_name: str = "token_mint") -> str:
@@ -147,18 +147,18 @@ def validate_transaction_signature(signature: Any, field_name: str = "signature"
             f"Signature must be a string, got {type(signature).__name__}",
             address=str(signature)[:50], field=field_name
         )
-    
+
     signature = signature.strip()
-    
+
     if not signature:
         raise InvalidAddressError("Signature cannot be empty", address="", field=field_name)
-    
+
     if len(signature) < 80 or len(signature) > 90:
         raise InvalidAddressError(
             f"Invalid signature length: {len(signature)} characters",
             address=signature, field=field_name
         )
-    
+
     try:
         decoded = base58.b58decode(signature)
     except Exception as e:
@@ -166,13 +166,13 @@ def validate_transaction_signature(signature: Any, field_name: str = "signature"
             f"Invalid base58 encoding in signature: {str(e)}",
             address=signature, field=field_name
         )
-    
+
     if len(decoded) != SOLANA_SIGNATURE_LENGTH:
         raise InvalidAddressError(
             f"Decoded signature has wrong length: {len(decoded)} bytes (expected {SOLANA_SIGNATURE_LENGTH})",
             address=signature, field=field_name
         )
-    
+
     return signature
 
 def validate_solana_address_safe(address: Any, field_name: str = "address") -> ValidationResult:
@@ -191,7 +191,7 @@ def validate_sol_amount(
 ) -> Decimal:
     min_amount = min_amount if min_amount is not None else MIN_SOL_AMOUNT
     max_amount = max_amount if max_amount is not None else MAX_SOL_AMOUNT
-    
+
     try:
         if isinstance(amount, Decimal):
             decimal_amount = amount
@@ -209,33 +209,33 @@ def validate_sol_amount(
             )
     except InvalidOperation as e:
         raise InvalidAmountError(f"Invalid number format: {str(e)}", amount=str(amount), field=field_name)
-    
+
     if decimal_amount.is_nan():
         raise InvalidAmountError("Amount cannot be NaN", amount=str(amount), field=field_name)
-    
+
     if decimal_amount.is_infinite():
         raise InvalidAmountError("Amount cannot be infinite", amount=str(amount), field=field_name)
-    
+
     if decimal_amount < 0:
         raise InvalidAmountError("Amount cannot be negative", amount=str(decimal_amount),
                                   field=field_name, min_value=0)
-    
+
     if decimal_amount == 0 and not allow_zero:
         raise InvalidAmountError("Amount cannot be zero", amount="0",
                                   field=field_name, min_value=str(min_amount))
-    
+
     if decimal_amount < min_amount and not (allow_zero and decimal_amount == 0):
         raise InvalidAmountError(
             f"Amount {decimal_amount} is below minimum {min_amount}",
             amount=str(decimal_amount), field=field_name, min_value=str(min_amount)
         )
-    
+
     if decimal_amount > max_amount:
         raise InvalidAmountError(
             f"Amount {decimal_amount} exceeds maximum {max_amount}",
             amount=str(decimal_amount), field=field_name, max_value=str(max_amount)
         )
-    
+
     return decimal_amount.quantize(Decimal("0.000000001"), rounding=ROUND_DOWN)
 
 def validate_lamports(
@@ -266,27 +266,27 @@ def validate_lamports(
     except ValueError as e:
         raise InvalidAmountError(f"Invalid lamports format: {str(e)}",
                                   amount=str(lamports), field=field_name)
-    
+
     if lamports_int < 0:
         raise InvalidAmountError("Lamports cannot be negative",
                                   amount=str(lamports_int), field=field_name, min_value=0)
-    
+
     if lamports_int == 0 and not allow_zero:
         raise InvalidAmountError("Lamports cannot be zero", amount="0",
                                   field=field_name, min_value=str(min_lamports))
-    
+
     if lamports_int < min_lamports:
         raise InvalidAmountError(
             f"Lamports {lamports_int} is below minimum {min_lamports}",
             amount=str(lamports_int), field=field_name, min_value=str(min_lamports)
         )
-    
+
     if lamports_int > max_lamports:
         raise InvalidAmountError(
             f"Lamports {lamports_int} exceeds maximum {max_lamports}",
             amount=str(lamports_int), field=field_name, max_value=str(max_lamports)
         )
-    
+
     return lamports_int
 
 def validate_token_amount(
@@ -302,12 +302,12 @@ def validate_token_amount(
             f"Token decimals must be between 0 and 18, got {decimals}",
             param_name="decimals", param_value=str(decimals)
         )
-    
+
     if min_amount is None:
         min_amount = Decimal(10) ** (-decimals) if decimals > 0 else Decimal("1")
     if max_amount is None:
         max_amount = Decimal(10) ** 18
-    
+
     try:
         if isinstance(amount, Decimal):
             decimal_amount = amount
@@ -326,30 +326,30 @@ def validate_token_amount(
     except InvalidOperation as e:
         raise InvalidAmountError(f"Invalid token amount format: {str(e)}",
                                   amount=str(amount), field=field_name)
-    
+
     if decimal_amount.is_nan() or decimal_amount.is_infinite():
         raise InvalidAmountError("Token amount must be a finite number",
                                   amount=str(amount), field=field_name)
-    
+
     if decimal_amount < 0:
         raise InvalidAmountError("Token amount cannot be negative",
                                   amount=str(decimal_amount), field=field_name)
-    
+
     if decimal_amount == 0 and not allow_zero:
         raise InvalidAmountError("Token amount cannot be zero", amount="0", field=field_name)
-    
+
     if decimal_amount < min_amount and not (allow_zero and decimal_amount == 0):
         raise InvalidAmountError(
             f"Token amount {decimal_amount} is below minimum {min_amount}",
             amount=str(decimal_amount), field=field_name, min_value=str(min_amount)
         )
-    
+
     if decimal_amount > max_amount:
         raise InvalidAmountError(
             f"Token amount {decimal_amount} exceeds maximum {max_amount}",
             amount=str(decimal_amount), field=field_name, max_value=str(max_amount)
         )
-    
+
     quantizer = Decimal(10) ** (-decimals)
     return decimal_amount.quantize(quantizer, rounding=ROUND_DOWN)
 
@@ -383,19 +383,19 @@ def validate_slippage(
     except ValueError as e:
         raise InvalidParameterError(f"Invalid slippage format: {str(e)}",
                                      param_name=field_name, param_value=str(slippage_bps))
-    
+
     if slippage_int < min_bps:
         raise InvalidParameterError(
             f"Slippage {slippage_int} bps is below minimum {min_bps} bps",
             param_name=field_name, param_value=str(slippage_int), min_value=min_bps
         )
-    
+
     if slippage_int > max_bps:
         raise InvalidParameterError(
             f"Slippage {slippage_int} bps exceeds maximum {max_bps} bps ({max_bps/100}%)",
             param_name=field_name, param_value=str(slippage_int), max_value=max_bps
         )
-    
+
     return slippage_int
 
 def validate_priority_fee(
@@ -411,7 +411,7 @@ def validate_priority_fee(
         )
     except InvalidAmountError as e:
         raise InvalidParameterError(str(e), param_name=field_name, param_value=str(fee_lamports))
-    
+
     return validated
 
 def validate_trade_params(params: Any, field_name: str = "trade_params") -> Dict[str, Any]:
@@ -420,10 +420,10 @@ def validate_trade_params(params: Any, field_name: str = "trade_params") -> Dict
             f"Trade parameters must be a dictionary, got {type(params).__name__}",
             field=field_name
         )
-    
+
     validated = {}
     batch = BatchValidationResult()
-    
+
     if "token_mint" in params:
         try:
             validated["token_mint"] = validate_token_mint(params["token_mint"], "token_mint")
@@ -432,7 +432,7 @@ def validate_trade_params(params: Any, field_name: str = "trade_params") -> Dict
             batch.add(ValidationResult.failure(str(e), "token_mint"))
     else:
         batch.add(ValidationResult.failure("token_mint is required", "token_mint"))
-    
+
     if "amount" in params:
         try:
             validated["amount"] = validate_sol_amount(params["amount"], "amount")
@@ -441,7 +441,7 @@ def validate_trade_params(params: Any, field_name: str = "trade_params") -> Dict
             batch.add(ValidationResult.failure(str(e), "amount"))
     else:
         batch.add(ValidationResult.failure("amount is required", "amount"))
-    
+
     if "slippage_bps" in params:
         try:
             validated["slippage_bps"] = validate_slippage(params["slippage_bps"], "slippage_bps")
@@ -451,7 +451,7 @@ def validate_trade_params(params: Any, field_name: str = "trade_params") -> Dict
     else:
         validated["slippage_bps"] = DEFAULT_SLIPPAGE_BPS
         batch.add(ValidationResult.success(DEFAULT_SLIPPAGE_BPS, "slippage_bps"))
-    
+
     if "priority_fee" in params:
         try:
             validated["priority_fee"] = validate_priority_fee(params["priority_fee"], "priority_fee")
@@ -461,14 +461,14 @@ def validate_trade_params(params: Any, field_name: str = "trade_params") -> Dict
     else:
         validated["priority_fee"] = 0
         batch.add(ValidationResult.success(0, "priority_fee"))
-    
+
     if not batch.is_valid:
         raise ValidationError(
             f"Trade parameter validation failed: {', '.join(batch.errors)}",
             field=field_name,
             details={"errors": batch.errors, "fields": batch.failed_fields}
         )
-    
+
     return validated
 
 def validate_telegram_id(telegram_id: Any, field_name: str = "telegram_id") -> int:
@@ -491,13 +491,13 @@ def validate_telegram_id(telegram_id: Any, field_name: str = "telegram_id") -> i
             )
     except ValueError as e:
         raise ValidationError(f"Invalid Telegram ID format: {str(e)}", field=field_name)
-    
+
     if id_int <= 0:
         raise ValidationError("Telegram ID must be a positive integer", field=field_name)
-    
+
     if id_int > 2**63:
         raise ValidationError("Telegram ID exceeds maximum value", field=field_name)
-    
+
     return id_int
 
 def validate_wallet_name(
@@ -510,17 +510,17 @@ def validate_wallet_name(
             f"Wallet name must be a string, got {type(name).__name__}",
             security_context=field_name
         )
-    
+
     name = name.strip()
     if not name:
         raise SecurityError("Wallet name cannot be empty", security_context=field_name)
-    
+
     if len(name) > max_length:
         raise SecurityError(
             f"Wallet name exceeds maximum length of {max_length} characters",
             security_context=field_name
         )
-    
+
     name_lower = name.lower()
     for pattern in PATH_TRAVERSAL_PATTERNS:
         if pattern in name_lower:
@@ -529,19 +529,19 @@ def validate_wallet_name(
                 security_context=field_name,
                 details={"forbidden_pattern": pattern}
             )
-    
+
     if '/' in name or '\\' in name:
         raise SecurityError(
             "Wallet name cannot contain path separators",
             security_context=field_name
         )
-    
+
     if not re.match(r'^[a-zA-Z0-9_\- ]+$', name):
         raise SecurityError(
             "Wallet name can only contain letters, numbers, spaces, hyphens, and underscores",
             security_context=field_name
         )
-    
+
     return name
 
 def validate_password_strength(
@@ -559,42 +559,42 @@ def validate_password_strength(
             f"Password must be a string, got {type(password).__name__}",
             security_context=field_name
         )
-    
+
     if len(password) < min_length:
         raise SecurityError(
             f"Password must be at least {min_length} characters long",
             security_context=field_name,
             details={"min_length": min_length, "actual_length": len(password)}
         )
-    
+
     if len(password) > max_length:
         raise SecurityError(
             f"Password cannot exceed {max_length} characters",
             security_context=field_name,
             details={"max_length": max_length}
         )
-    
+
     errors = []
-    
+
     if require_uppercase and not re.search(r'[A-Z]', password):
         errors.append("at least one uppercase letter")
-    
+
     if require_lowercase and not re.search(r'[a-z]', password):
         errors.append("at least one lowercase letter")
-    
+
     if require_digit and not re.search(r'\d', password):
         errors.append("at least one digit")
-    
+
     if require_special and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
         errors.append("at least one special character")
-    
+
     if errors:
         raise SecurityError(
             f"Password must contain {', '.join(errors)}",
             security_context=field_name,
             details={"missing_requirements": errors}
         )
-    
+
     return password
 
 def sanitize_string(
@@ -606,17 +606,17 @@ def sanitize_string(
 ) -> str:
     if not isinstance(s, str):
         raise ValidationError(f"Expected string, got {type(s).__name__}", field=field_name)
-    
+
     if len(s) > max_length:
         raise ValidationError(f"String exceeds maximum length of {max_length}", field=field_name)
-    
+
     s = unicodedata.normalize('NFC', s)
-    
+
     if remove_control_chars:
         allowed_control = set()
         if allow_newlines:
             allowed_control.update({'\n', '\r', '\t'})
-        
+
         result = []
         for char in s:
             if unicodedata.category(char) == 'Cc':
@@ -625,9 +625,9 @@ def sanitize_string(
             else:
                 result.append(char)
         s = ''.join(result)
-    
+
     s = ''.join(c for c in s if c not in DANGEROUS_CHARS)
-    
+
     return s
 
 def validate_json_safe(
@@ -642,27 +642,27 @@ def validate_json_safe(
                 f"Data exceeds maximum nesting depth of {max_depth}",
                 field=field_name
             )
-        
+
         if isinstance(obj, dict):
             for value in obj.values():
                 check_depth(value, current_depth + 1)
         elif isinstance(obj, (list, tuple)):
             for item in obj:
                 check_depth(item, current_depth + 1)
-    
+
     check_depth(data)
-    
+
     try:
         serialized = json.dumps(data, default=str)
     except (TypeError, ValueError, OverflowError) as e:
         raise ValidationError(f"Data is not JSON serializable: {str(e)}", field=field_name)
-    
+
     if len(serialized) > max_size:
         raise ValidationError(
             f"Serialized data exceeds maximum size of {max_size} bytes",
             field=field_name
         )
-    
+
     return data
 
 def validate_url(
@@ -673,42 +673,42 @@ def validate_url(
 ) -> str:
     if allowed_schemes is None:
         allowed_schemes = ['http', 'https', 'ws', 'wss']
-    
+
     if not isinstance(url, str):
         raise ValidationError(f"URL must be a string, got {type(url).__name__}", field=field_name)
-    
+
     url = url.strip()
     if not url:
         raise ValidationError("URL cannot be empty", field=field_name)
-    
+
     try:
         parsed = urlparse(url)
     except Exception as e:
         raise ValidationError(f"Invalid URL format: {str(e)}", field=field_name)
-    
+
     if not parsed.scheme:
         raise ValidationError(
             "URL must include a scheme (http, https, ws, wss)",
             field=field_name
         )
-    
+
     if parsed.scheme.lower() not in allowed_schemes:
         raise ValidationError(
             f"URL scheme must be one of: {', '.join(allowed_schemes)}",
             field=field_name
         )
-    
+
     if require_tls and parsed.scheme.lower() not in ['https', 'wss']:
         raise ValidationError("URL must use TLS (https or wss)", field=field_name)
-    
+
     if not parsed.netloc:
         raise ValidationError("URL must include a host", field=field_name)
-    
+
     dangerous_in_url = ['<', '>', '"', "'", '{', '}', '|', '\\', '^', '`']
     for char in dangerous_in_url:
         if char in url:
             raise ValidationError(f"URL contains forbidden character: {char}", field=field_name)
-    
+
     return url
 
 def validate_batch(
@@ -716,7 +716,7 @@ def validate_batch(
     raise_on_first_error: bool = False
 ) -> BatchValidationResult:
     batch = BatchValidationResult()
-    
+
     for validator, value, field_name in validations:
         try:
             validated_value = validator(value)
@@ -724,10 +724,10 @@ def validate_batch(
         except Exception as e:
             result = ValidationResult.failure(str(e), field_name)
             batch.add(result)
-            
+
             if raise_on_first_error:
                 result.raise_if_invalid()
-    
+
     return batch
 
 def create_validator(
@@ -741,7 +741,7 @@ def create_validator(
             raise
         except Exception as e:
             raise error_class(f"Validation failed: {str(e)}", field=field_name)
-    
+
     return validator
 
 def is_valid_solana_address(address: Any) -> bool:
