@@ -13,17 +13,17 @@ class SolanaTraderError(Exception):
     is_recoverable: bool = False
     retry_after: Optional[float] = None
     timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    
+
     def __post_init__(self) -> None:
         super().__init__(self.format_message())
-    
+
     def format_message(self) -> str:
         base = f"[{self.error_code}] {self.message}"
         if self.context:
             context_str = ", ".join(f"{k}={v}" for k, v in self.context.items())
             base += f" | Context: {context_str}"
         return base
-    
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "error_code": self.error_code,
@@ -34,10 +34,10 @@ class SolanaTraderError(Exception):
             "timestamp": self.timestamp.isoformat(),
             "exception_type": self.__class__.__name__,
         }
-    
+
     def __str__(self) -> str:
         return self.format_message()
-    
+
     def __repr__(self) -> str:
         return (
             f"{self.__class__.__name__}("
@@ -51,7 +51,7 @@ class ConfigurationError(SolanaTraderError):
     error_code: str = "CONFIG_001"
     is_recoverable: bool = False
 
-@dataclass  
+@dataclass
 class InitializationError(SolanaTraderError):
     error_code: str = "INIT_001"
     is_recoverable: bool = False
@@ -477,7 +477,7 @@ def wrap_exception(
     context = kwargs.pop("context", {})
     context["original_error"] = type(original).__name__
     context["original_message"] = str(original)
-    
+
     return wrapper_class(
         message=msg,
         context=context,
